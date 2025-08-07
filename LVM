@@ -1,0 +1,4739 @@
+#lvm in macys
+Filesystem extend:
+
+#lvextend -r -L +2G /dev/mapper/VolGroup01-LogVol15
+lvextend -r -L +10G /dev/mapper/appvg00-lv_appls_controlm
+lvextend -r -L +2G /dev/mapper/VolGroup01-LogVol14
+lvextend -r -L +2G /dev/mapper/localvg00-lv_tmp
+lvextend -r -L +10G /dev/mapper/appvg00-lv_www
+lvextend -r -L +300G /dev/mapper/appvg00-lv_var_lib_docker
+
+Xfs Type:
+lvextend -L +1G /dev/mapper/localvg00-lv_usr && xfs_growfs /dev/mapper/localvg00-lv_usr
+lvextend -L +5G /dev/mapper/localvg00-lv_var && xfs_growfs /dev/mapper/localvg00-lv_var
+lvextend -L +1G /dev/mapper/localvg00-lv_home && xfs_growfs /dev/mapper/localvg00-lv_home
+
+lvextend -L +100G /dev/mapper/appvg00-lv_www_a_bkup && xfs_growfs /dev/mapper/appvg00-lv_www_a_bkup
+
+lvextend -L +30G /dev/mapper/data-www && xfs_growfs /dev/mapper/data-www
+lvextend -L +1G /dev/mapper/localvg00-lv_usr && xfs_growfs /dev/mapper/localvg00-lv_usr
+
+Set filesystem to Certain GB:
+lvextend -r -L10g  /dev/mapper/appvg00-lv_www
+
+Swap Space increase 4 to 15GB 
+
+lvresize /dev/localvg00/lv_swap -L +11G
+vgs
+ mkswap /dev/localvg00/lv_swap
+swapon /dev/localvg00/lv_swap
+ free -h
+
+
+lvresize /dev/mapper/localvg00-lv_swap -L +15G
+
+/dev/mapper/localvg00-lv_swap
+
+
+
+Temp Swap Space:
+
+# pre-check
+cat /proc/swap
+free
+# the above output probably should show swap space is all used, and you don't have other way to decrease that
+# here I found /www/logs/jboss has 50G, almost not used, so I put an 8GB temporary file there
+myswapfile=/www/logs/jboss/swapfile-check-readme-for-deletion
+# make sure below error out (not existing yet)
+ls -ld $myswapfile
+# use dd command to write an 8GB file for reservation. I put a 'if' check there just to make sure write to correct file
+echo $myswapfile | grep -q /swapfile-check-readme-for-deletion; if [ $? -eq 0 ]; then time dd if=/dev/zero of=$myswapfile bs=1024 count=8388608; fi
+# make sure below good now
+ls -ld $myswapfile
+# format swap disk
+echo $myswapfile | grep -q /swapfile-check-readme-for-deletion; if [ $? -eq 0 ]; then mkswap $myswapfile; fi
+# turn swap disk
+echo $myswapfile | grep -q /swapfile-check-readme-for-deletion; if [ $? -eq 0 ]; then swapon $myswapfile; fi
+# post check, make sure you see addition 8GB swap space, and the usage percentage is decreased.
+cat /proc/swaps
+free -g
+# put a readme file there, so people might check and know when to delete it
+cat << eof > $myswapfile.readme
+run " cat /proc/swaps ", if you don't see $myswapfile
+(typically, after a reboot), then it's safe to delete the following:
+  - $myswapfile
+  - $myswapfile.readme
+eof
+ 
+# check readme file
+ls -l $myswapfile.readme
+cat $myswapfile.readme
+
+change swap size from 4GB to 8GB when it's on  /dev/mapper/localvg00-lv_swap:
+
+grep swap /etc/fstab
+# check to see similar output as "/dev/mapper/localvg00-lv_swap swap swap defaults 0 0" from above command
+# turn off current swap
+swapoff -v /dev/mapper/localvg00-lv_swap
+# check localvg00 still have enough free space
+vgs localvg00
+# resize to correct size
+lvm lvresize /dev/mapper/localvg00-lv_swap -L 8G
+# make it swap space
+mkswap /dev/mapper/localvg00-lv_swap
+# turn on swap space
+swapon -va
+# check swap space to make sure the new size is there.
+cat /proc/swaps
+# check swap space to make sure the new size is there.
+free
+
+
+======================================================================================
+Format XFS fileystem
+
+ lsof /StoreOnce/
+ umount /StoreOnce
+ mkfs -t xfs /dev/appvg00/lv_StoreOnce
+ mkfs -t xfs -f /dev/appvg00/lv_StoreOnce
+ mount /StoreOnce
+df -h /StoreOnce/
+
+Before: 
+[root@ma412dlpbak001 ~]# df -hP /StoreOnce
+Filesystem                        Size  Used Avail Use% Mounted on
+/dev/mapper/appvg00-lv_StoreOnce   99T   99T   36G 100% /StoreOnce
+
+After:
+[root@ma412dlpbak001 ~]# df -hP /StoreOnce
+Filesystem                        Size  Used Avail Use% Mounted on
+/dev/mapper/appvg00-lv_StoreOnce   99T   38M   99T   1% /StoreOnce
+
+==============================================================================================
+To clear space on filesystem:
+
+find /opt/puppetlabs/puppet/cache/clientbucket -type f -mtime +45 -atime +45 -print0 | xargs -0 rm
+
+# /usr/bin/find . -type f -name '*.gz' -mtime +5 -delete
+# /usr/bin/find . -type f -name '*.zip' -mtime +5 -delete
+
+To get two days old files list
+ find . -type f -mtime 2 -not -name "*.gz" -not -name "*.xz" -exec gzip {} \;
+
+
+To zip two days old files
+ find . -type f -mtime 2 -not -name "*.gz" -not -name "*.xz" -exec ls -lh {} \;
+
+
+[root@abc ~]# cat /etc/cron.d/clearpuppetcacheclientbucket
+# Clean up puppet's clientbucket directory
+0 1 * * 7 if [ -d /var/lib/puppet/clientbucket/  ]; then find /var/lib/puppet/clientbucket/ -type f -mtime +45 -atime +45 -print0 | xargs -0 rm; fi
+0 1 * * 7 if [ -d /opt/puppetlabs/puppet/cache/clientbucket  ]; then find /opt/puppetlabs/puppet/cache/clientbucket -type f -mtime +45 -atime +45 -print0 | xargs -0 rm; fi
+[root@lp601messp0001 ~]#
+
+To clean 2 old kernel fron boot filesystem:
+
+package-cleanup --oldkernels --assumeyes --count=2
+
+# zipping 5 days older files
+0 0 * * * /usr/bin/find /var/log/logstash/ -type f -name '*.log' -mtime +5 -exec gzip {} \;
+# deleteing files which are older than 30 days
+0 0 * * * /usr/bin/find /var/log/logstash/ -type f -name '*.log.gz' -mtime +30 -delete
+
+
+==============================================================================================
+
+ADU Report:
+You can find package in jump server /home/bh19192p and install (better go with rpm command)
+rpm -ivh hpacucli-9.40-12.0.i386.rpm or 
+yum -y install hpacucli-9.40-12.0.i386.rpm
+[root@ln000xsspl0001 tmp]# hpacucli ctrl all diag file=/tmp/ln000xsspl0001_ADUreport.zip ris=on xml=on zip=on
+ hpacucli ctrl all diag file=/tmp/lp000xselk0029_ADUreport.zip ris=on xml=on zip=on
+
+
+==============================================================================================
+
+Sudoers File:
+
+
+cp -pv /home/qpmsync/qpmsync/policy_sudo/sudoers /tmp/sudoers-backup.$(date +%Y%m%d%H%M%S)
+pmpolicy edit
+Puppet agent -tov
+
+%mst-hadoop-admin ln000xsbdg0010 = (root) NOPASSWD:/bin/su - root, (root) /usr/bin/su - root
+%mdc_prodsupport_ag ALL  = (root) NOPASSWD: /bin/su - fsgapp, NOPASSWD:/usr/bin/su - fsgapp, NOPASSWD: /bin/su - chefsolo, NOPASSWD:/usr/bin/su - chefsolo
+%mdc_wds_ci_admin_ag lp000xhmap0009 = (root) NOPASSWD:/usr/bin/su - root, (root) NOPASSWD:/bin/su - root  ##2022-04-02
+%mdc_wds_ci_admin_ag  esu2v290 = (root) NOPASSWD:/usr/bin/su - root, (root) NOPASSWD:/bin/su - root  ##2022-07-05
+%mtech-db2luw-dba  ma412dlvmch020, ma304dlvhub523  = (root) NOPASSWD:/usr/bin/su - root, (root) NOPASSWD:/bin/su - root  ##2022-07-16
+
+
+bh06820 Server1 = (root) NOPASSWD:/usr/bin/su - root, (root) NOPASSWD:/bin/su - root ##2022-03-26
+bh21168  Server1 = (root) NOPASSWD:/usr/bin/su - ftphub, (root) NOPASSWD:/bin/su - ftphub
+
+Temp root access:
+%mdc_wds_ci_admin_ag  Server1 = (root) NOPASSWD:/usr/bin/su - root, (root) NOPASSWD:/bin/su - root  ##2022-05-03
+
+[root@Server2 sudoers.d]# cd /
+[root@Server2 /]# cd /etc/sudoers.d
+[root@Server2 sudoers.d]# cat fsgapp
+# This file is managed by Chef.
+# Do NOT modify this file directly.
+
+fsgapp ALL=(root) NOPASSWD:/usr/bin/chef-client
+fsgapp ALL=(root) NOPASSWD:/usr/bin/chef-solo
+[root@mdc2vrd7e71e3 sudoers.d]# sudo -U fsgapp -l
+Matching Defaults entries for fsgapp on mdc2vrd7e71e3:
+    !visiblepw, always_set_home, match_group_by_gid, always_query_group_plugin, env_reset, env_keep="COLORS DISPLAY HOSTNAME HISTSIZE KDEDIR
+    LS_COLORS", env_keep+="MAIL PS1 PS2 QTDIR USERNAME LANG LC_ADDRESS LC_CTYPE", env_keep+="LC_COLLATE LC_IDENTIFICATION LC_MEASUREMENT
+    LC_MESSAGES", env_keep+="LC_MONETARY LC_NAME LC_NUMERIC LC_PAPER LC_TELEPHONE", env_keep+="LC_TIME LC_ALL LANGUAGE LINGUAS _XKB_CHARSET
+    XAUTHORITY", secure_path=/sbin\:/bin\:/usr/sbin\:/usr/bin
+
+User fsgapp may run the following commands on mdc2vrd7e71e3:
+    (root) NOPASSWD: /usr/bin/chef-client
+    (root) NOPASSWD: /usr/bin/chef-solo
+
+If AD groups are not added permanently in sudoers file. Then use below
+Run chattr -i /etc/sssd/sssd.conf
+vi the file and make your changes
+Run chattr +i /etc/sssd/sssd.conf
+
+On /etc/sudoers.d folder:
+[root@Server2 sudoers.d]# cat mdc_astra_supp_ag
+%mdc_astra_supp_ag ALL=(ALL) NOPASSWD: /bin/su - iwov, /usr/bin/su - iwov
+[root@Server2 sudoers.d]# cat mdc_astra_supp_ag1
+Temporary root access:
+%mdc_astra_supp_ag ALL = (root) NOPASSWD:/usr/bin/su - root, (root) NOPASSWD:/bin/su - root  ##2022-03-13
+%mdc_stella_supp_ag Server1, Server2  = (root) NOPASSWD:/bin/su - root, (root) NOPASSWD: /usr/bin/su - root ##2022-11-14
+[root@Server2 sudoers.d]#
+
+cd /etc/sudoers.d;
+Touch ecommonitoringadmin;
+chmod 440 ecommonitoringadmin;
+echo "%ecommonitoringadmin ALL = (root) NOPASSWD:/usr/bin/su - splunk, (root) NOPASSWD:/bin/su - splunk" > ecommonitoringadmin;
+echo "%ecommonitoringadmin ALL= (root) NOPASSWD:/usr/bin/su - root, (root) NOPASSWD:/bin/su - root ##2023-02-10" > ecommonitoringadmin;
+sudo -U bh22418 -l
+%mtech_devops_cloud_ag, mdc_wds_ci_admin_ag server1, server2 = (root) NOPASSWD:/usr/bin/su - root, (root) NOPASSWD:/bin/su - root  ##2023-04-27
+%mtech-mer-pbi-dev-readwrite server1 = (root) NOPASSWD:/usr/bin/su - d_app_rkp, (root) NOPASSWD:/bin/su - d_app_rkp
+ifsmftccn ALL = (root) NOPASSWD: /tmp/mftpsinstall/install, /bin/chown -R ifsmftcc /apps/tibco/mftps, /bin/chown -R ifsmftcc /apps/tibco/mftps, /bin/chgrp -R cfadmin /apps/tibco/mftps, /bin/chgrp -R cfadmin /apps/tibco/mftps, /bin/chown -R mftps /mftp, /bin/chown -R mftps /mftp, /bin/chgrp -R cfadmin /mftp, /bin/chgrp -R cfadmin /mftp
+%git_mtp_developer Server1 = (root) NOPASSWD:/usr/bin/su - app_report_portal , (root) NOPASSWD:/bin/su - app_report_portal , (root) NOPASSWD:/usr/bin/docker * , /usr/bin/systemctl * docker.service , /usr/local/bin/docker-compose *
+
+==============================================================================================
+
+ACL Permissions:
+Group change
+setfacl -Rm g:wmsadmin:rw /apps/mst/tmsload-service/load/out
+setfacl -Rm g:stores:rw /var/opt/CARKaim
+setfacl -Rm g:gcp-epc-developer_ap_npr_rw:r /marketplace-np
+setfacl -Rm g:mdc_personalization_ag:rwx /opt/
+setfacl -Rm u:fsgapp:rw /etc/logrotate.d
+
+setfacl -Rm g:cms-aem_ap_npr_rw:rwx /opt
+setfacl -Rm g:cms-aem_ap_npr_rw:rwx /appls
+setfacl -Rm g:cms-aem_ap_npr_rw:rwx /www/a/logs
+
+
+User change
+setfacl -Rm u:wmsadmin:rw /apps/mst/tmsload-service/load/out
+setfacl -Rm u:b009543:rw /opt/dbconnector
+setfacl -Rm u:b009543:rw /opt/dsportal
+setfacl -Rm u:daas_hs1_user_np:rwx /opt/infoworks/ext_scripts
+setfacl -Rm u:mftps:rwx /apps/mft/data/out
+Bh12698
+setfacl -Rm u:b004946:rwx /data/ETL/MST_EDW/TRANSFERS
+
+B004946
+setfacl -Rm u:bh19192p:rwx /tmp/test
+
+setfacl -Rm u:cds_mgage:rwx /pitset/pitsetidm/data/rsvp
+setfacl -Rm u:zeususer:rw /www/a/data
+setfacl -Rm u:fsgapp:rwx /var/run
+setfacl -Rm u:
+fsgapp
+
+setfacl -Rm u:bh21014:rw  /appls/
+setfacl -Rm u:d_app_mpr:rwx /etc/systemd/system/macysposd
+==============================================================================================
+PAM issue:
+
+RSA Server Health:
+/opt/pam/bin/64bit/acestatus
+Sometimes RSA data is cached and needs extra cleaning
+Commands to fix:
+
+# Login to the server with the issue, double check /var/ace/sdopts.rec has correct IP
+hostname -i
+cat /var/ace/sdopts.rec
+
+Run below command before delete and add RSA using automation
+rm -f /var/ace/failover.dat /var/ace/sdstatus.1 /var/ace/securid
+
+# Delete from RSA console and Add back using Nix-Automation
+https://nix-automation/RSA.php
+ 
+
+ 
+# Test with your racfid by running the below and following prompts.
+Run# /opt/pam/bin/64bit/acetest
+
+ 
+with above steps, tested on ln001xsdcr0021. I showed below before and after the change. 
+
+
+
+
+https://confluence.federated.fds/display/IF/SSSD+Conversion
+
+ https://confluence.federated.fds/display/IF/Manage+password-auth+pam+file
+
+The AD group also needs to be Unix-Enabled by the Windows team. Everything is explained in the article.
+
+[root@lp000xslnx0001 r006006]# adcheck -g security-automation-enginnering_rb_prd_rw |grep -i gid
+[root@lp000xslnx0001 r006006]#
+https://confluence.federated.fds/display/IF/AD+Groups+Need+to+Be+Unix-Enabled+for+HCI+Environment
+
+
+
+
+error: PAM: User account has expired for r001223
+--> Checked AD group added in the host
+--> PAM files updated correctly with same OS version server
+--> restarted sshd and sssd services
+
+
+
+Access denied even user has added into AD groups.
+
+You can try the following and see if they fix the issue first:
+sss_cache -E
+sss_cache -u <login>
+
+
+root@lp000xhmtd0102 ~]# id b004927
+uid=1004927(b004927) gid=214(fsg) groups=214(fsg)
+
+[root@lp000xhmtd0102 ~]# systemctl stop sssd
+[root@lp000xhmtd0102 ~]# rm -rf /var/lib/sss/db/*
+[root@lp000xhmtd0102 ~]# systemctl restart sssd
+
+[root@lp000xhmtd0102 ~]# id b004927
+uid=1004927(b004927) gid=214(fsg) groups=214(fsg),2146781134(mtech_cloud_services_ag),1661066246(uxag_sysadmin_linux),1534674584(mtech_pluralsight_access),2146783333(microsoft-o365-otp-exempt),2146782374(tableau-hr-compliance-reporting_ap_prd_rd),2146782481(oci-cloud-unix-admin_rb_prd_ad),2146783219(insite-desktop-sso_users)
+
+
+
+========================================================================================
+User access issues for Monitoring users(b0_emn1 & b0_emn2)
+
+# /opt/quest/bin/vastool flush
+# service vasd restart
+# service nscd restart
+#/etc/opt/quest/vas/users.allow
+
+# /opt/quest/bin/vastool -u  b0_unixops  join -f federated.fds ma000xsfed02.federated.fds
+
+
+
+[root@esu4v383 ~]# grep sdap_idmap_sid_to_unix /var/log/sssd/sssd_FEDERATED.FDS.log | tail -1
+(Thu Feb 10 10:02:14 2022) [sssd[be[FEDERATED.FDS]]] [sdap_idmap_sid_to_unix] (0x0080): Could not convert objectSID [S-1-5-21-2050513582-853017349-972441984-2905599] to a UNIX ID -- this is the issue
+
+[root@esu4v383 ~]# vi /etc/sssd/sssd.conf
+[root@esu4v383 ~]# sed -n '21,25p' /etc/sssd/sssd.conf
+ldap_id_mapping = true
+min_id = 1000
+override_homedir = /home/%u
+simple_allow_groups = UxAG_restrictedadmin_Linux, UxAG_mst_ifs_mon, UxAG_mst_ifs_mon, uxag_sysadmin_linux, UxAG_mst_ifs_mon, uxag_sysadmin_linux, UxAG_mst_ifs_mon, uxag_sysadmin_linux, MST-eCom_ProjectDelivery_Team, UxAG_mdc_PreProds_Release, UxAG_mdc_PreProds_QA, UxAG_fsg_ifs_was, mdc_udeploy_deleng_deployer_ag, UxAG_Linux_Cert_Admin, linux_global_svc_accts
+ldap_idmap_range_size = 999999999 --- Solution
+
+
+
+
+
+
+========================================================================================
+
+Crontab Settings to delete 30days old files
+
+##SCTASK0388468
+30 0 * * *  find /apps/mst/tmsload-service/load/out -name "mergeOBEDI856.*" -type f -mtime +30 -delete
+30 0 * * *  find /apps/mst/tmsload-service/load/out -name "*.LoadTendered.xml-*" -type f -mtime +30 -delete
+30 0 * * *  find /apps/mst/tmsload-service/load/out -name "*.LoadTenderAccepted.xml-*" -type f -mtime +30 -delete
+
+find /apps/fcs/Data_FIX/DAAS/inbound/active -name "FGA_ACTIVITY_LOG_*" -type f -mtime +10 -delete
+
+find /scratch/node10 -name "tsort*" -type f -mtime +90 /apps/fcs/Data_FIX/DAAS/inbound/active
+
+find /apps/fcs/Data_FIX/DAAS/inbound/active -name "FGA_ACTIVITY_LOG_*" -type f -mtime +10 -delete
+
+/var/lib/docker
+
+[root@lp000xsflo0001 cron.d]# cat clear-wmsadmin-dockerlog
+30 23 * * * root /bin/find /var/lib/docker/containers/*/*-json.log -exec truncate -s 0 {} \;
+========================================================================================
+ Nagios - lp000xsksm0002
+
+User unlock in AIX host
+chuser unsuccessful_login_count=0 username
+
+========================================================================================
+/opt  - logrhythm
+We have logrhythm scsm daemon running on most of our servers, write log to /opt file system but no any logrotate there. After some time, this small /opt file system will be filled up. I put a rundeck job to make /opt/logrhythm/scsm/logs/ size manageable .  go to https://confluence.federated.fds/x/r7lyCw , and search manage-logrhythm_scsm-log . the direct rundeck job url is https://lp000xslnx0010:4443/project/SystemModifyManual/job/show/bb032122-9101-4d0d-bd0f-f1acfa0effd2 . When you see /opt size is above usage threshold, and after checking, you know the /opt/logrhythm/scsm/logs/ has the top usage, then can run this job to fix it. And it will also put a logrote there, to make it a permanent fix. 
+
+========================================================================================
+Firmware issue
+
+In ILO, under Information->Diagnostics, there is a Swap ROM button on the right side. That's what we can use to swap the ROM versions.
+
+
+
+
+========================================================================================
+Puppet issue
+
+[root@mdc2vrs7865bc ~]# puppet agent -tv
+Error: Could not request certificate: The certificate retrieved from the master does not match the agent's private key. Did you forget to run as root?
+Certificate fingerprint: 2F:3C:47:A2:43:E5:80:87:39:71:BC:2A:2D:DC:3C:56:EB:0A:78:07:2B:07:B9:58:98:BA:F0:AD:10:D6:10:38
+To fix this, remove the certificate from both the master and the agent and then start a puppet run, which will automatically regenerate a certificate.
+On the master:
+  puppet cert clean mdc2vrs7865bc.federated.fds
+On the agent:
+  1a. On most platforms: find /etc/puppetlabs/puppet/ssl -name mdc2vrs7865bc.federated.fds.pem -delete
+  1b. On Windows: del "\etc\puppetlabs\puppet\ssl\certs\mdc2vrs7865bc.federated.fds.pem" /f
+  2. puppet agent -t
+ 
+Exiting; failed to retrieve certificate and waitforcert is disabled
+
+To fix this, remove the certificate from both the master and the agent and then start a puppet run, which will automatically regenerate a certificate. 
+ 
+First Step: On the master: (lp000xslnx0017 in this case, since it's 
+ and not Oracle) run the below command
+ 
+  puppet cert clean mdc2vrs7865bc.federated.fds
+ 
+Second Step: On the agent: Run the below command on mdc2vrs7865bc 
+ 
+  find /etc/puppetlabs/puppet/ssl -name mdc2vrs7865bc.federated.fds.pem -delete
+ 
+Third Step: Then run the puppet agent -tv command again and it should succeed.
+ 
+Reference: https://confluence.federated.fds/display/IF/Fix+Expired+Puppet+Client+Certificate
+
+
+========================================================================================
+ASM disks has been configured. 
+commands history used to create ASM disks for future reference. 
+  157  for x in $(ls /sys/class/fc_host/); do echo $x; done 
+  158  for x in $(ls /sys/class/fc_host/); do echo "1" >  /sys/class/fc_host/$x/issue_lip; done
+  159  for x in $(ls /sys/class/fc_host/); do echo  "- - -" > /sys/class/scsi_host/$x/scan; done
+  162  yum -y install device-mapper-multipath
+  163  vi /etc/multipath.conf
+  164  modprobe dm-multipath
+  165  systemctl restart multipathd
+  170  yum -y install kmod-oracleasm
+  172  wget https://yum.oracle.com/repo/OracleLinux/OL7/latest/x86_64/getPackage/oracleasm-support-2.1.11-2.el7.x86_64.rpm
+  173  yum install oracleasm-support-2.1.11-2.el7.x86_64.rpm
+  174  wget http://download.oracle.com/otn_software/asmlib/oracleasmlib-2.0.12-1.el7.x86_64.rpm
+  175  yum install oracleasmlib-2.0.12-1.el7.x86_64.rpm
+  176  oracleasm configure -i
+  178  oracleasm status
+  179  oracleasm init
+  180  lsmod | grep oracleasm
+  184  multipath -ll | grep 3PARdata | awk '{print $1}'
+  185  for x in $(multipath -ll | grep 3PARdata | awk '{print $1}'); do ls /dev/mapper/$x; done
+  186  oracleasm createdisk data001 /dev/mapper/360002ac0000000000000022a0001ad39
+  187  oracleasm createdisk data002 /dev/mapper/360002ac000000000000002320001ad39
+  188  oracleasm createdisk data003 /dev/mapper/360002ac0000000000000022f0001ad39
+  189  oracleasm createdisk data004 /dev/mapper/360002ac000000000000002290001ad39
+  190  oracleasm createdisk data005 /dev/mapper/360002ac000000000000002300001ad39
+  191  oracleasm createdisk data006 /dev/mapper/360002ac0000000000000022d0001ad39
+  192  oracleasm createdisk data007 /dev/mapper/360002ac0000000000000022b0001ad39
+  193  oracleasm createdisk data008 /dev/mapper/360002ac000000000000002310001ad39
+  194  oracleasm createdisk data009 /dev/mapper/360002ac0000000000000022e0001ad39
+  195  oracleasm createdisk data010 /dev/mapper/360002ac0000000000000022c0001ad39
+  196  oracleasm scandisks
+  197  oracleasm listdisks
+  198  multipath -ll | grep -q 3PARdata; if [ $? -eq 0 ]; then   cp /etc/sysconfig/oracleasm-_dev_oracleasm /etc/sysconfig/oracleasm-_dev_oracleasm.backup;   sed -i 's/^ORACLEASM_SCANEXCLUDE.*/ORACLEASM_SCANEXCLUDE="sd"/g' /etc/sysconfig/oracleasm-_dev_oracleasm;   sed -i 's/^ORACLEASM_SCANORDER.*/ORACLEASM_SCANORDER="dm"/g' /etc/sysconfig/oracleasm-_dev_oracleasm;   sdiff -s /etc/sysconfig/oracleasm-_dev_oracleasm.backup /etc/sysconfig/oracleasm-_dev_oracleasm; fi
+  199  vi /usr/local/bin/checkasmmap.sh
+  200  chmod a+x /usr/local/bin/checkasmmap.sh
+  201  /usr/local/bin/checkasmmap.sh
+  202  oracleasm listdisks
+
+========================================================================================
+Ulimit value:  for fsgapp user max open file and no.of processes
+
+[root@mdc1vrs30b95c sudoers.d]# ps -eLF -U fsgapp | wc -l
+4453
+
+
+[root@ln000xhepc0020 limits.d]# pwd
+/etc/security/limits.d
+[root@ln000xhepc0020 limits.d]# cat 91-fsgapp-os-limits.conf
+fsgapp  soft    nofile  12288
+fsgapp  hard    nofile  12288
+fsgapp  soft    nproc   12288
+
+[fsgapp@ln000xhepc0020 ~]$ ulimit -a | egrep "open|processes"
+open files                      (-n) 12288
+max user processes              (-u) 12288
+
+
+
+========================================================================================
+
+
+
+========================================================================================
+8080 port is not listening:
+[root@mdc1vr1122 ~]# nmap -p 8080 11.48.184.122
+
+Starting Nmap 5.51 ( http://nmap.org ) at 2022-01-22 22:12 EST
+Nmap scan report for mdc1vr1122.federated.fds (11.48.184.122)
+Host is up (0.00012s latency).
+PORT     STATE SERVICE
+8080/tcp open  http-proxy
+
+Nmap done: 1 IP address (1 host up) scanned in 0.15 seconds
+[root@mdc1vr1122 ~]# netstat -anlp | grep 8080
+tcp        0      0 0.0.0.0:8080                0.0.0.0:*                   LISTEN      12690/java
+
+
+[root@esu1l240 ~]# nmap -oG --open  -Pn -p 5555 ln000xsjoc0002.federated.fds.
+# Nmap 6.40 scan initiated Thu Apr  7 01:00:30 2022 as: nmap -oG - --open -Pn -p 5555 ln000xsjoc0002.federated.fds.
+# Nmap done at Thu Apr  7 01:00:30 2022 -- 1 IP address (1 host up) scanned in 0.27 seconds
+
+ #nmap -Pn -p 80,443,8140,8141,8443,9090 11.48.191.1
+
+--> 
+For the regular output, if all show as open/closed, then the firewall are good. Anywhere showed filtered, means not good.
+
+
+
+[root@ln000xsjoc0002 ~]# firewall-cmd --zone=public --add-port=5555/tcp --permanent
+success
+[root@ln000xsjoc0002 ~]# firewall-cmd --list-all --permanent
+public
+target: default
+icmp-block-inversion: no
+interfaces:
+sources:
+services: dhcpv6-client http https ssh
+ports: 5555/tcp
+protocols:
+masquerade: no
+forward-ports:
+source-ports:
+icmp-blocks:
+rich rules:
+
+[root@ln000xsjoc0002 ~]# firewall-cmd --state
+running
+
+========================================================================================
+Test Server : 
+lindev11
+
+========================================================================================
+To install yarn package
+Application team has to download yarn package from below link once done Linux team has to install it from root folder.
+https://classic.yarnpkg.com/lang/en/docs/install/#windows-stable
+[root@ln000xsjos0014 /]# npm install --global yarn
+
+> yarn@1.22.17 preinstall /usr/lib/node_modules/yarn
+> :; (node ./preinstall.js > /dev/null 2>&1 || true)
+
+npm ERR! code EEXIST
+npm ERR! syscall symlink
+npm ERR! path ../lib/node_modules/yarn/bin/yarn.js
+npm ERR! dest /usr/bin/yarn
+npm ERR! errno -17
+npm ERR! EEXIST: file already exists, symlink '../lib/node_modules/yarn/bin/yarn.js' -> '/usr/bin/yarn'
+npm ERR! File exists: /usr/bin/yarn
+npm ERR! Remove the existing file and try again, or run npm
+npm ERR! with --force to overwrite files recklessly.
+
+npm ERR! A complete log of this run can be found in:
+npm ERR! /root/.npm/_logs/2022-02-08T11_57_23_693Z-debug.log
+[root@ln000xsjos0014 /]# node -v
+v12.22.10
+[root@ln000xsjos0014 /]# yarn version
+yarn version v1.22.17
+info Current version: 1.0.1
+Done in 14.85s.
+
+
+========================================================================================
+[root@esu1l240 tmp]# ps -ef | grep inet.log | grep 7245 | awk '{print $2}'| grep -v 7245 > /tmp/child_proc
+[root@esu1l240 tmp]# cat /tmp/child_proc | grep 7245
+[root@esu1l240 tmp]# for i in `cat /tmp/child_proc`; do kill -9 $i; done
+[root@esu1l240 tmp]# ps -ef | grep inet.log
+root 30842 6814 0 02:29 pts/2 00:00:00 grep --color=auto inet.log
+
+
+========================================================================================
+Add AD group into servers:
+
+If sssd.conf file exist then use automation
+
+If not sssd. Conf file then use below file 
+
+echo "MST-MAIN-Ops" >> /etc/opt/quest/vas/users.allow
+========================================================================================
+Jenkins and password less authetication
+
+[root@lp000xhupm0002 fsgapp]# ll -d .ssh .ssh/authorized_keys
+drwx------ 2 fsgapp fsgapp  29 Feb  8 11:25 .ssh
+-rw------- 1 fsgapp fsgapp 401 Feb  8 11:25 .ssh/authorized_keys
+
+========================================================================================
+To create separate filesystem for /var/lib/docker
+systemctl status docker
+systemctl stop docker
+lsof /var | grep /var/lib/docker
+mv /var/lib/docker /var/lib/docker.back
+# use automation to create file system
+# 99 GB /var/lib/docker owned by root root
+df -Ph /var/lib/docker
+# sync old content back
+rsync -av /var/lib/docker.back/ /var/lib/docker/
+# post check
+systemctl start docker
+systemctl status docker
+systemctl enable docker
+
+# delete backup
+rm -rf /var/lib/docker.back/
+
+========================================================================================
+Java Installation:
+SCTASK0404978 -package name  java-11-openjdk
+Macy's *NIX Automation
+========================================================================================
+Fastboot - host down
+
+Reset it in the vcenter and immediately click up/down arrow
+Goto the new kernel and press "e" in that in the kernel line at the end append  -----fastboot----
+Save it
+Then press "b" to boot normally it will skip the fsck
+
+
+Redhat 6 root password break
+Reset it in the vcenter and immediately click up/down arrow
+Goto the new kernel and press "e" in that in the kernel line at the end append  space and 1
+Save it --> Enter
+Then press "b" to boot normally it will go to root command line, you can change password or execute required commands and reboot the host
+
+Boot failed :
+Please make a note and save procedure if you see any error like below while rebooting VMs for this month patching.
+ 
+
+ 
+temporary solution: in vcenter, edit the VM, VM Options, Boot Options, Boot Delay set to 5000 milliseconds. After that, force a reboot, hit ESC during boot, and choose "Hard Drive" to boot into (see screen shot 2
+ 
+	1. Go to VM à Actions à edit settings à VM options à Boot Options à  Boot delay = 5000 ms à click on “OK”.
+	2. Go to VM à Actions à Power à reset à enter ESC button on console immediately (only once) à choose “Hard Drive” optionà Enter -à  select kernel option --> edit fastboot at end of kernel line and save  à you will get command line after booting completedà login and verify server is health is fine.
+
+
+========================================================================================
+Extend Swap space online
+
+[root@lp000xsecd0003 ~]# free -g
+             total       used       free     shared    buffers     cached
+Mem:            31          3         27          0          0          1
+-/+ buffers/cache:          2         28
+Swap:            3          3          0
+[root@lp000xsecd0003 ~]# cd /
+[root@lp000xsecd0003 /]# dd if=/dev/zero of=/swap_file bs=8GB count=1
+0+1 records in
+0+1 records out
+2147479552 bytes (2.1 GB) copied, 1.90767 s, 1.1 GB/s
+[root@lp000xsecd0003 /]# chmod 600 /swap_file
+[root@lp000xsecd0003 /]# mkswap /swap_file
+mkswap: /swap_file: warning: don't erase bootbits sectors
+        on whole disk. Use -f to force.
+Setting up swapspace version 1, size = 2097144 KiB
+no label, UUID=e539bb0e-20c7-48b7-b1e0-dab9d4f0f7ff
+[root@lp000xsecd0003 /]# mkswap -f /swap_file
+Setting up swapspace version 1, size = 2097144 KiB
+no label, UUID=b0dc40c4-9832-43e2-a829-16091442dcd3
+[root@lp000xsecd0003 /]# swapon /swap_file
+[root@lp000xsecd0003 /]# free -h
+             total       used       free     shared    buffers     cached
+Mem:           31G        16G        14G        10M       524M       9.7G
+-/+ buffers/cache:       6.5G        24G
+Swap:         6.0G         0B       6.0G
+[root@lp000xsecd0003 /]# cat /etc/fstab | grep swap
+/dev/mapper/localvg00-lv_swap swap                    swap    defaults        0 0
+swap_file  swap swap defaults        0 0
+
+Multiple swap Example on lp000xhctm0001
+dd if=/dev/zero of=/swap_file1 bs=4GB count=1
+chmod 600 /swap_file1
+mkswap /swap_file1
+free -h
+swapon --show
+swapon /swap_file1
+Free -h
+swap_file1  swap swap defaults        0 0
+========================================================================================
+LUNs:
+Physical --> SAN-->Yes
+
+New disk not shows once Vmware team added disk from vSphere
+for x in $(grep mpt /sys/class/scsi_host/host?/proc_name | awk -F/ '{print $5}'); do echo $x; echo "- - -" > /sys/class/scsi_host/$x/scan; done
+
+or
+
+for x in $(ls /sys/class/scsi_host/*/scan); do echo $x; echo "- - -" > $x; done
+
+[root@ln000xhepc0010 ~]# lsblk -l | grep disk
+sda                    8:0    0   50G  0 disk
+sdb                    8:16   0  450G  0 disk
+sdc                    8:32   0  300G  0 disk  --> New disk
+
+
+Fdisk /dev/newdisk --> t--> 8e (LVM)
+
+pvcreate /dev/sdc1
+partprobe
+ pvs
+vgextend appvg00 /dev/sdc1
+pvs
+vgs
+df -hP /opt/nova/
+lvextend -r -L +300G /dev/mapper/appvg00-lv_opt_nova
+df -hP /opt/nova/
+ history
+
+vgextend appvg00/dev/sdg1
+lvextend -L +50G /dev/mapper/appvg00-lv_dbbackups && xfs_growfs /dev/mapper/appvg00-lv_dbbackups
+
+lvextend -r -L +50G /dev/mapper/appvg00-lv_www_vhosts_auction.ml.com
+=======================================================================================================================
+To skip multi or two factor authentication or skip 2FA
+
+[root@esu4v069 ~]# cat /etc/puppet/environments/production/modules/mst_rsa/files/sd_pam.conf
+[root@esu4v069 ~]#
+
+Check on individual server
+cat /etc/sd_pam.conf | grep -i b008721p
+
+ 994  vi /etc/sd_pam.conf
+  995  chattr +i /etc/sd_pam.conf
+  996  exit
+  997  lsattr /etc/sd_pam.conf
+  998  chattr -i /etc/sd_pam.conf
+  999  puppet agent -tv
+
+======================================================================================================================
+
+-----------------------------Nodejs12.22---------------------
+curl --silent --location https://rpm.nodesource.com/setup_12.x | sudo bash -
+
+[root@ln000xsjos0015 yum.repos.d]# rpm -qa | grep nodejs
+nodejs-12.22.12-1nodesource.x86_64
+
+
+https://confluence.federated.fds/x/uEjMDw
+
+=======================================================================================================================
+please use this rundeck job for email deliver related request, it will do a lot of pre-check (firewall etc.), install proper rpm, then configure smarthost. it will error out if something is wrong. 
+ 
+install-mailx-postfix	click here	Install mailx, postfix for email delivery
+#mailx -a APPConsole.log -s "APPConsole" venkatesh.veerabattini@macys.com  </dev/null
+#mail -s "test from $(hostname)" youremailaddress@macys.com < /etc/hosts
+
+set up email delivery:
+
+check tcp port 25 against appmail.fds.com, fail if not opened.
+remove sendmail package if any
+install postfix package if not there
+install mailx package if not there
+configure /etc/postfix/main.cf with relay host "appmail.fds.com" and restart postfix daemon
+enable postfix daemon to survive a reboot
+make sure postfix daemon is started
+=======================================================================================================================
+Yum issues:
+
+2022-07-08 09:21:23 yum search freetds
+   35  2022-07-08 09:22:08 yum repolist
+   36  2022-07-08 09:22:57 subscription-manager repos --list
+   37  2022-07-08 09:23:04 subscription-manager repos --list | grep -i epel
+   38  2022-07-08 09:23:19 subscription-manager repos --enable Macys_EPEL_EL_7_EPEL_EL_7
+   39  2022-07-08 09:23:26 yum search freetds
+   40  2022-07-08 09:23:54 yum -y install freetds.x86_64
+   41  2022-07-08 09:24:17 subscription-manager repos --disable Macys_EPEL_EL_7_EPEL_EL_7
+ 5581  2022-08-01 09:55:52 subscription-manager repos --enable=Macys_EPEL_EL_7_EPEL_EL_7
+ 5582  2022-08-01 09:56:00 yum list collectl
+ 5583  2022-08-01 09:56:39 yum install collectl
+ 5584  2022-08-01 09:56:49 yum -y install collectl
+
+
+=======================================================================================================================
+AD group into normal local group conversion and add as secondary group.
+
+ecom is an AD group, we cannot use normal way to add. here is how you can do it by making it a local group first. 
+ 
+# check and user same group id as AD
+[root@ln000xsudb0012 ~]# getent group ecom 
+ecom:*:1395020045:
+[root@ln000xsudb0012 ~]#
+ 
+# run 'vigr', and put "ecom:x:1395020045:" at the end, the gid is from above output
+ 
+# run 'vigr -s', and put "ecom:!::" at the end, force to write and quit
+ 
+# after that, you should be able to use normal way to add additional group, e.g.
+ 
+[root@ln000xsudb0012 ~]# id db2as 
+uid=62065(db2as) gid=62068(db2asgrp) groups=62068(db2asgrp)
+ 
+[root@ln000xsudb0012 ~]# usermod -a -G ecom db2as
+ 
+[root@ln000xsudb0012 ~]# id db2as
+uid=62065(db2as) gid=62068(db2asgrp) groups=62068(db2asgrp),1395020045(ecom)
+[root@ln000xsudb0012 ~]#
+
+=======================================================================================================================
+Number of CPUs and Number of Sockets:
+
+
+
+[root@ln000xhdas0106 ~]# cat /proc/cpuinfo | grep processor | wc -l
+8
+
+[root@ln000xhdas0106 ~]# lscpu
+Architecture:          x86_64
+CPU op-mode(s):        32-bit, 64-bit
+Byte Order:            Little Endian
+CPU(s):                8
+On-line CPU(s) list:   0-7
+Thread(s) per core:    1
+Core(s) per socket:    1
+Socket(s):             8
+NUMA node(s):          1
+Vendor ID:             GenuineIntel
+CPU family:            6
+Model:                 85
+Model name:            Intel(R) Xeon(R) Platinum 8276 CPU @ 2.20GHz
+Stepping:              7
+CPU MHz:               2194.844
+BogoMIPS:              4389.68
+Hypervisor vendor:     VMware
+Virtualization type:   full
+L1d cache:             32K
+L1i cache:             32K
+L2 cache:              1024K
+L3 cache:              39424K
+NUMA node0 CPU(s):     0-7
+
+Top memory utilisations:
+
+[root@ln000xhdas0106 ~]# ps -eo user,lstart,pid,ppid,cmd,comm,%mem,%cpu --sort=-%mem | head -10
+USER        PID   PPID CMD                         COMMAND         %MEM %CPU
+sa_mig    72136  72114 /mig/java/jdk1.8.0_251/bin/ java            36.3  118
+sa_mig    72025      1 /mig/java/jdk1.8.0_251/bin/ java             0.5  0.1
+sa_mig    11470      1 java -Xms256m -Xmx512m -jar java             0.4  0.0
+root       1456      1 /usr/share/auditbeat/bin/au auditbeat        0.1  5.9
+root        621      1 /usr/lib/systemd/systemd-jo systemd-journal  0.1  0.0
+sa_mig    72114  72112 /mig/java/jdk1.8.0_251/bin/ java             0.1  0.0
+root       1450      1 /usr/bin/python /usr/bin/go python           0.0  0.1
+root       1458      1 /usr/sbin/rsyslogd -n       rsyslogd         0.0  0.0
+root      78393  78391 /usr/libexec/sssd/sssd_nss  sssd_nss         0.0  0.0
+
+Top CPU utilisations:
+
+ps -eo user,lstart,pid,ppid,cmd,comm,%mem,%cpu --sort=-%cpu| head -10
+
+#sar -u -f /var/log/sa/sa20 -s 17:15:00 -e 18:15:00
+
+We should read it differently for the last column, it's %idle. When it said 90.88%, it means the server is very light used around that time, only about 10% CPU used, but for 5.28%, it means almost 95% CPU got used around that time (average in 10 minutes in sar report). 
+
+
+
+Swap utilizations:
+[root@ln000xsodb0005 ~]# grep -i vmswap /proc/[1-9]*/status | sort -nrk 2 | head -n 15
+/proc/25507/status:VmSwap:        251480 kB
+/proc/5822/status:VmSwap:         164812 kB
+/proc/3947/status:VmSwap:          35916 kB
+/proc/3958/status:VmSwap:          33656 kB
+/proc/6251/status:VmSwap:          32780 kB
+/proc/6780/status:VmSwap:          25100 kB
+/proc/6248/status:VmSwap:          24828 kB
+/proc/2895/status:VmSwap:          16492 kB
+/proc/6886/status:VmSwap:          14224 kB
+/proc/3972/status:VmSwap:          13268 kB
+/proc/6711/status:VmSwap:           9156 kB
+/proc/9211/status:VmSwap:           8816 kB
+/proc/68912/status:VmSwap:          8148 kB
+/proc/81044/status:VmSwap:          6960 kB
+/proc/81101/status:VmSwap:          6168 kB
+
+
+===================================================================================================
+Python:
+
+On RHEL7, vendor provides python34/35/36/38, but no 37. I have installed rh-python38.x86_64, you can run " source /opt/rh/rh-python38/enable " first then you should be able to use python 3.8.13. In principle, anything you want to do in python37, you should be able to achieve it from python38. 
+
+--------
+user start up profile setting, ask user to put "source /opt/rh/rh-python38/enable" as the last line in $HOME/.bash_profile (or app id $HOME/.bash_profile), so when they login, python 3.8 will be default.
+
+python_version == '3.7'
+python_version >= '3.8'
+ 
+ 
+My understanding is that you just simply want to run gcloud related commands with python3.8 or above to have latest & greatest features from python (and python library). If that is your goal, what you can do is
+	1. run python38 virtual env setting ( source /opt/rh/rh-python38/enable ), or put this line to your startup script ~/.bash_profile, logout and login again. do same for app user
+	2. run 'python --version' to double check, make sure it's 3.8
+	3. run as your id or app id using pip to install google-cloud-storage & pandas
+			a. pip install google-cloud-storage
+			b. pip install pandas
+
+
+=======================================================================================================================
+Rsync: copy files from server to another server with same permissions and owners
+
+rsync -avz mdc2vra088:/home/scripts     /home/bh19192p
+rsync -avz /home/bh19192p/scripts     ln000xhset0002:/home/
+
+
+
+=======================================================================================================================
+Inventory Updates:
+Decom Status turn into "P"
+
+lp000xslnx0009:#/usr/local/bin/inventory-mark-pending-decom <server_name>
+lp000xslnx0009: #for x in $(cat /tmp/decom_p__vv); do /usr/local/bin/inventory-mark-pending-decom  $x; done
+
+
+Decom Status turn into "Y"
+#/usr/local/bin/inventory-mark-decommissione  <server_name>
+#for x in $(cat /tmp/decom_y_vv); do /usr/local/bin/inventory-mark-decommissioned $x; done
+=======================================================================================================================
+Push sssd file into Softlayer servers to fix authentication error
+
+Single server:
+myhost=ma304dlpdb2806
+# on jumphost for a single server
+myhost=changeservername
+ssh $myhost "bash -s" -- < /usr/local/bin/fix-weird-sssd
+ 
+ Many servers:
+# for a list of servers, put servers to a file e.g., /tmp/sssdfix-0001
+mylist=/tmp/sssdfix-0001-change
+# double check and confirm list
+cat $mylist
+# run fix in batch
+for x in $(cat $mylist); do ssh $x "bash -s" -- < /usr/local/bin/fix-weird-sssd; done
+
+========================================================================================================================
+User password never expire:  #chage -M -1 <username>
+
+[root@lp209messp0001 pam.d]# chage -I -1 -m 0 -M 99999 -E -1 stores
+
+Before change password never expired.
+[root@lp209messp0001 pam.d]# chage -l stores
+Last password change                                    : Jun 16, 2021
+Password expires                                        : Sep 14, 2021
+Password inactive                                       : never
+Account expires                                         : never
+Minimum number of days between password change          : 0
+Maximum number of days between password change          : 90
+Number of days of warning before password expires       : 7
+
+After change password to never expired.
+[root@lp209messp0001 pam.d]# chage -l stores
+Last password change                                    : Jun 16, 2021
+Password expires                                        : never
+Password inactive                                       : never
+Account expires                                         : never
+Minimum number of days between password change          : 0
+Maximum number of days between password change          : 99999
+Number of days of warning before password expires       : 7
+
+From <https://teams.microsoft.com/multi-window/?agent=electron&version=22070300815> 
+
+
+=====================================================================================================================
+
+IBM / AIX filesystem creation:
+
+-------------NFS mount----------------------
+/dbabackups:
+        dev             = /export/fs36
+        vfs             = nfs
+        nodename        = "11.48.23.231"
+        mount           = true
+        options         = bg,soft,intr,sec=sys
+        account         = false
+
+------------------------------------------------------------------------
+
+#cat /etc/filesystems
+#mount /dbabackups
+=============================================================================================
+
+Change filesystem name from /apps to /opt/ibm
+
+#df -h /apps
+/dev/mapper/appvg00-lv_apps             50G   33M   50G   1% /apps
+#/etc/fstab
+/dev/appvg00/lv_apps /apps xfs defaults 0 0
+#Rename lv from lv_apps to lv_opt_ibm
+lvrename appvg00 lv_apps lv_opt_ibm
+mkdir -p /opt/ibm
+chown -R sterlingadmin:sterlinggrp ibm
+mount -a
+df -h /opt/ibm
+/dev/mapper/appvg00-lv_opt_ibm   50G   33M   50G   1% /opt/ibm
+
+=========================================================================
+Hyper v servers detection:
+
+[root@lp621messp0001 ~]# facter virtual
+hyperv
+
+
+
+===========================================================================
+
+To list running services on linux hosts:
+
+OS 6 version:  #service --status-all | grep running
+
+## for i in `cat /tmp/service_vv`; do echo "$i: "; ssh -q -oBatchMode=yes -oStrictHostKeyChecking=no -oConnectTimeout=1 -oConnectionAttempts=1 $i "service --status-all | grep running"; echo; done
+
+OS 7 version: #systemctl --type=service --state=running
+
+# for i in `cat /tmp/service_vv`; do echo "$i: "; ssh -q -oBatchMode=yes -oStrictHostKeyChecking=no -oConnectTimeout=1 -oConnectionAttempts=1 $i "systemctl --type=service --state=running"; echo; done
+=================================================================================
+
+gosigar.log files in log rotate:
+
+
+[root@lp000xhmtd0609 logrotate.d]# pwd
+/etc/logrotate.d
+[root@lp000xhmtd0609 logrotate.d]# ls -l| grep c3-agentlite
+-rw-r--r--  1 root root 303 Feb 20 04:53 c3-agentlite
+[root@lp000xhmtd0609 logrotate.d]# cat c3-agentlite
+/usr/local/agentlite/log/gosigar.log {
+    rotate 30
+    daily
+    compress
+    copytruncate
+    missingok
+    notifempty
+    sharedscripts
+    prerotate
+        /usr/bin/systemctl stop ccc_agentd.service
+    endscript
+    postrotate
+        /usr/bin/systemctl start ccc_agentd.service
+    endscript
+}
+ 
+[root@lp000xhmtd0609 logrotate.d]#
+
+
+============================iLO / idrac  / con - physical health check===============================================
+
+
+[root@lp000xslnx0001 ~]# /usr/local/bin/check-console-nagios-status esu1l392-con 
+
+# systemctl status amsd
+
+===============================================================================;=
+/boot filesystem corrupted
+
+· login to rescue mode. this is typically most difficult part since /boot already corrupted. In this case, someone already login there, I just took the  console, so I don't know how thatis achieved.
+· mount /boot  # try to reproduce the issue, it will also give you a lot of useful information for further troubleshooting
+· xfs_repair /boot
+· mount /boot   # since above command will tell you there are some critical metadata, need a mount to make sure
+· xfs_repair -L /boot
+· mount /boot # now it's good.
+============================================================================================
+Filebeat service:
+
+Restart service if no luck then restart server
+
+[root@lp590messp0001 ~]# uptime
+ 16:49:49 up  1:00,  5 users,  load average: 2.40, 2.27, 1.92
+[root@lp590messp0001 ~]# ps -ef | grep -i filebeat
+filebeat 20325     1 22 16:45 ?        00:00:55 /usr/share/filebeat/bin/filebeat -c /home/filebeat/filebeat/filebeat.yml -path.home /usr/share/filebeat -path.config /etc/filebeat -path.data /home/filebeat -path.logs /home/filebeat
+root     20730 20671  0 16:49 pts/4    00:00:00 grep --color=auto -i filebeat
+[root@lp590messp0001 ~]# systemctl status filebeat
+● filebeat.service - filebeat
+   Loaded: loaded (/usr/lib/systemd/system/filebeat.service; enabled; vendor preset: disabled)
+   Active: active (running) since Tue 2023-04-18 16:45:59 EDT; 4min 10s ago
+     Docs: https://www.elastic.co/guide/en/beats/filebeat/current/index.html
+ Main PID: 20325 (filebeat)
+    Tasks: 14
+   Memory: 325.6M
+   CGroup: /system.slice/filebeat.service
+           └─20325 /usr/share/filebeat/bin/filebeat -c /home/filebeat/filebeat/filebeat.yml -path.home /usr/share/filebeat -path.config /et...
+
+Apr 18 16:45:59 lp590messp0001.federated.fds systemd[1]: Started filebeat.
+[root@lp590messp0001 ~]#
+
+==============================================================================================
+Libraries migration:
+This is wrong way to do it. copy fundamental library from old server to new version OS might crash the server. the correct way is to find the library is from which package, and ask requestor to  put service now request install package from new servers through automation. Below is an example, run yum provides command against the library name, and figure out that on new RHEL8 server, compat-openssl10.x86_64 package needs to be installed in order to get same library. Although from fact that red hat moved libcrypto.so.10 out of openssl-libs.x86_64 package, looks like this is old way, and RHEL8 in priciple should not use it any more. But if application team insists, ask them to install compat-openssl10.x86_64. Please do check similar for other libraries. 
+ 
+# on new RHEL8 server
+[root@lp000xhwms0125 ~]# yum provides */libcrypto.so.10 
+Updating Subscription Management repositories.
+compat-openssl10-1:1.0.2o-3.el8.i686 : Compatibility version of the OpenSSL library
+Repo        : rhel-8-for-x86_64-appstream-rpms
+Matched from:
+Filename    : /usr/lib/libcrypto.so.10
+ 
+compat-openssl10-1:1.0.2o-3.el8.x86_64 : Compatibility version of the OpenSSL library
+Repo        : rhel-8-for-x86_64-appstream-rpms
+Matched from:
+Filename    : /usr/lib64/libcrypto.so.10
+ 
+# on old RHEL7 server
+[root@lp000xhosw0013 ~]# yum --disablerepo=Macys_Nagios_NCPA_ncpa_rhel_7 provides */libcrypto.so.10 
+Loaded plugins: enabled_repos_upload, langpacks, package_upload, priorities, product-id, search-disabled-repos, subscription-manager
+1:openssl-libs-1.0.1e-34.el7.i686 : A general purpose cryptography library with TLS implementation
+Repo        : rhel-7-server-rpms
+Matched from:
+Filename    : /usr/lib/libcrypto.so.10
+ 
+ 
+ 
+1:openssl-libs-1.0.1e-34.el7.x86_64 : A general purpose cryptography library with TLS implementation
+Repo        : rhel-7-server-rpms
+Matched from:
+Filename    : /usr/lib64/libcrypto.so.10
+=====================================================================================================================
+· Grafana Dashboard Non-prod : https://ln000xssol0001:3000/
+· Grafana Dashboard Production: https://lp000xssol0001:3000/
+
+
+
+
+=======================================================================================================================
+
+Steps to install Cyberak agent:
+
+Link:
+https://confluence.federated.fds/display/CYB/How+To+Install+The+AIM+Agent+On+Red+Hat+Enterprise+Linux
+
+--> Clean old packages and cache
+/etc/rc.d/init.d/aimprv stop
+rpm -e CARKaim
+rm -rf /opt/CARKaim
+rm -rf /var/opt/CARKaim
+rm -rf /etc/opt/CARKaim
+
+-->Move zip file to /tmp folder of required server and unzip it. 
+file is under /home/bh19192p folder on jump box.
+RHELinux-x64.zip
+
+--> go to unzipped folder and change execution permission to below two files
+
+#chmod +x CreateCredFile install_aim_agent_rhel.sh
+
+--> Change IP adress to "11.48.7.71" in vault.ini.seed folder
+
+[root@lp692messp0001 install_aim_v10]# cat Vault.ini.seed | head
+VAULT=CAMainVault
+ADDRESS=11.48.7.71
+PORT=185...
+
+--> execute the install script and enter username and password
+
+#./install_aim_agent_rhel.sh
+.
+.
+.
+Please wait! Moving server to Satellite Vault
+
+Stopping CyberArk Application Password Provider......
+CyberArk Application Password Provider was stopped successfully.
+Starting CyberArk Application Password Provider...
+CyberArk Application Password Provider was started successfully.
+[root@lp692messp0001 install_aim_v10]#
+
+
+Username: ca-aim-inst
+Password: MVFreeman2020
+
+verify and start cyberark password.
+
+[root@lp692messp0001 install_aim_v10]# rpm -qa | grep CARKaim
+CARKaim-10.05-00.27.x86_64
+[root@lp692messp0001 init.d]# pwd
+/etc/init.d
+[root@lp692messp0001 init.d]# ./aimprv status
+CyberArk Application Password Provider is running.
+=======================================================================
+
+
+[root@dml3db01 bh18453p]# rpm -ivh el-cohesity-agent-6.6.0d_u5-1.x86_64.rpm
+Preparing...                          ################################# [100%]
+Environment variable COHESITYUSER not defined..will Use root account
+Service has already been stopped
+Updating / installing...
+   1:cohesity-agent-6.6.0d_u5-1       ################################# [100%]
+Environment variable COHESITYUSER not defined..Using root to run the service!
+LVM: Using lvs from path: /usr/sbin/lvs
+LVM: 2.02.187(2)-RHEL7(2020-03-24)
+Using resultant set_env file as: /opt/cohesity/agent/software/crux/bin/set_env.sh
+Writing env of this upgrade to: /opt/cohesity/agent/software/crux/bin/set_env.sh
+Adding systemd service
+Created symlink from /etc/systemd/system/multi-user.target.wants/cohesity-agent.service to /usr/lib/systemd/system/cohesity-agent.service.
+Register cohesity-agent service to systemd succesful.
+[root@dml3db01 bh18453p]# ps -ef | grep cohesity
+root     318460      1  0 11:41 ?        00:00:00 /opt/cohesity/agent/software/crux/bin/linux_agent_exec --log_dir=/var/log/cohesity --max_log_size=30 --stop_logging_if_full_disk=true --logbuflevel=-1 --linux_agent_tmp_dir=/opt/cohesity/agent/data/agent//tmp --[root@dml3db01 bh18453p]# cd /opt/cohesity/agent/software/crux/bin/
+[root@dml3db01 bin]# ls -l
+total 117188
+#systemctl status cohesity-agent
+● cohesity-agent.service - Cohesity Linux Agent
+   Loaded: loaded (/usr/lib/systemd/system/cohesity-agent.service; enabled; vendor preset: disabled)
+   Active: active (running) since Sat 2023-03-25 01:30:28 EDT; 2 months 13 days ago
+ Main PID: 13938 (linux_agent_exe)
+    Tasks: 133
+   Memory: 538.7G
+   CGroup: /system.slice/cohesity-agent.service
+           ├─13938 /opt/cohesity/agent/software/crux/bin/linux_agent_exec --log_dir=/var/log/cohesity --max_log_size=30 --stop_logging_if_f...
+           └─14012 /opt/cohesity/agent/software/crux/bin/linux_agent_exec --log_dir=/var/log/cohesity --max_log_size=30 --stop_logging_if_f...
+
+Warning: Journal has been rotated since unit was started. Log output is incomplete or unavailable.
+
+============================================================
+Cohesity automation
+
+pkg install /runtime/java/jre-8
+mkdir /solarisosimages
+mount -F nfs 11.48.115.247:/export/solarisosimages /solarisosimages
+cp /solarisosimages/cohesity_agent/cohesity_java_agent_6.8.1_u3_solaris_11_sparc /var/tmp
+cd /var/tmp;chmod 777 cohesity_java_agent_6.8.1_u3_solaris_11_sparc
+pkgadd -d cohesity_java_agent_6.8.1_u3_solaris_11_sparc
+ 
+cd /usr/local/cohesity/agent/
+./solaris_agent.sh status
+./solaris_agent.sh stop
+./solaris_agent.sh start
+./solaris_agent.sh status
+ 
+mkdir /solarisosimages
+mount -F nfs 11.48.115.247:/export/solarisosimages /solarisosimages
+cp /solarisosimages/cohesity_agent/cohesity_agent_6.6.0d_u5_solaris_10 /var/tmp
+cd /var/tmp;chmod 777 cohesity_agent_6.6.0d_u5_solaris_10
+pkgadd -d cohesity_agent_6.6.0d_u5_solaris_10
+
+
+=========================================================================================
+Gfs2 filesystem:
+
+chkconfig cman off
+chkconfig clvmd off
+chkconfig rgmanager off
+chkconfig gfs2 off
+chkconfig cman on
+chkconfig clvmd on
+chkconfig rgmanager on
+chkconfig gfs2 on
+service cman start
+service clvmd start
+service rgmanager start
+service gfs2 start
+
+==================================================================================================
+RPM DB corrupted:
+
+[root@lp000xsiap0025 cache]# mkdir /var/lib/rpm/backup
+[root@lp000xsiap0025 cache]# cp -a /var/lib/rpm/__db* /var/lib/rpm/backup/
+[root@lp000xsiap0025 cache]# rm -f /var/lib/rpm/__db.[0-9][0-9]*
+[root@lp000xsiap0025 cache]# rpm --quiet -qa
+[root@lp000xsiap0025 cache]# rpm --rebuilddb
+[root@lp000xsiap0025 cache]# yum clean all
+Loaded plugins: enabled_repos_upload, langpacks, package_upload, product-id, search-disabled-repos, subscription-manager
+Repodata is over 2 weeks old. Install yum-cron? Or run: yum makecache fast
+Cleaning repos: Macys_EPEL_7_EPEL_7 Macys_LNX_Software_LNX_Software_RHEL_7 Macys_Nagios_NCPA_ncpa_rhel_7 rhel-7-server-extras-rpms
+              : rhel-7-server-optional-rpms rhel-7-server-rpms rhel-7-server-satellite-tools-6.10-rpms rhel-7-server-supplementary-rpms
+              : rhel-server-rhscl-7-rpms
+Uploading Enabled Repositories Report
+Loaded plugins: langpacks, product-id, subscription-manager
+[root@lp000xsiap0025 cache]# df -h /var
+Filesystem                    Size  Used Avail Use% Mounted on
+/dev/mapper/localvg00-lv_var   10G  6.0G  4.1G  60% /var
+[root@lp000xsiap0025 cache]#
+
+=============================================================================================================
+Subscribe Redhat 7:
+
+#subscription-manager register --org="Macys" --name="$(hostname -f | tr 'A-Z' 'a-z')" --activationkey="RHEL7_VMware,RHEL7" --force
+# subscription-manager status 
+
+
+
+cell2* server:  
+
+yum update --exclude=qpid-proton-c
+
+
+[root@cell2-53770566e40411e98dcc0242c0a82508 ~]# cat /etc/puppetlabs/puppet/puppet.conf
+[main]
+vardir = /opt/puppetlabs/puppet/cache
+logdir = /var/log/puppetlabs/puppet
+rundir = /var/run/puppetlabs
+ssldir = /etc/puppetlabs/puppet/ssl
+
+[agent]
+pluginsync      = true
+report          = true
+ignoreschedules = true
+daemon          = false
+ca_server       = lp000xslnx0021.federated.fds
+ca_port         = 8141
+certname        = cell2-53770566e40411e98dcc0242c0a82508
+environment     = production
+server          = lp000xslnx0021.federated.fds
+
+[root@cell2-53770566e40411e98dcc0242c0a82508 
+
+ #subscription-manager register --org "Macys" --activationkey="RHEL7_VMware,RHEL7" --force
+ #subscription-manager refresh
+ #yum update --exclude=qpid-proton-c
+
+
+================================================================================================================
+RHEL 6 to 8 migration:
+
+EL6 to RHEL8 upgrade, Keep same IP - Jun Ying - Macy's Confluence (federated.fds)
+
+
+================================================================================================================
+Cifs / Samba /smb
+Samba / SMB / Cifs / windows filesystem mount on Linux server steps:
+
+
+-------> Client need to provide these details to Linux admin <---------
+Request Details
+sourceserver\sourcepath    : \\MA000xsmas54\MAS_SHARE            
+dest server     : ln000xsmas0023                                          
+dest path     : /opt/MA000xsmas54/MAS_SHARE        
+dest user    : d_app_mas        
+dest group : d_app_mas
+
+# cat /root/.credentials
+domain=federated.fds
+username=da-MTECH-MasPla-P
+password=qXn3HjR-ULpM
+
+------> Linux admin need to follow below steps <-------------------
+
+
+1) Check if samba software is installed or not, if not then install it
+
+[root@ln000xsmas0023 opt]# rpm -qa | grep -i cifs
+[root@ln000xsmas0023 opt]# 
+
+2) To install samba software
+
+#]# yum install -i cifs-utils
+
+[root@ln000xsmas0023 opt]# rpm -qa | grep -i cifs
+cifs-utils-7.0-1.el8.x86_64
+
+3) Reload services
+
+#systemctl daemon-reload
+
+4) To create mount directory and grant ownership
+# mkdir -p /opt/MA000xsmas54/MAS_SHARE
+#chown -R d_app_mas:d_app_mas  /opt/MA000xsmas54
+[root@ln000xsmas0023 opt]# ls -l | grep MA000xsmas54
+drwxr-xr-x   3 d_app_mas d_app_mas   23 Aug 30 05:36 MA000xsmas54
+
+
+5) Fstab entry details
+fstab entry:
+//MA000xsmas54/MAS_SHARE  /opt/MA000xsmas54/MAS_SHARE cifs credentials=/root/.credentials,uid=d_app_mas,gid=d_app_mas,dir_mode=0770,file_mode=0770,vers=2.0 0 0
+
+6) To mouunt Samba filesystem
+mount command:
+#mount -a
+or
+#mount -t cifs -o credentials=/root/.credentials //MA000xsmas56/MAS_SHARE /opt/MA000xsmas56/MAS_SHARE
+
+7) Final Result:
+[root@ln000xsmas0023 opt]# df -hP /opt/MA000xsmas54/MAS_SHARE
+Filesystem                Size  Used Avail Use% Mounted on
+//MA000xsmas54/MAS_SHARE  2.0T  661G  1.4T  34% /opt/MA000xsmas54/MAS_SHARE
+[root@ln000xsmas0023 opt]#
+
+=================================================================================
+To generate DSET logs:  
+
+Vendor Contacts - IFS_Linux - Macy's Confluence (federated.fds)
+
+File available under jumphost
+
+[root@lp000xslnx0001 bh19192p]# ls -l | grep dell-dset-lx64-3.4.0.137.bin
+-rwx------ 1 root     root          25454038 Oct  9 13:01 dell-dset-lx64-3.4.0.137.bin
+
+
+./dell-dset-lx64-3.4.0.137.bin
+==========================================================================================
+
+OS watcher download in Linux System:
+
+Document 301137.1 (oracle.com)
+====================================================================================================
+We have some new RHEL8 servers where someone installed python 3.9, but that breaks our current automation because some modules Ansible relies on have been deprecated. So we need to install python 3.6 instead. If you have installed 3.9 on a server, please uninstall it and install 3.6 instead.
+==================================================================================================
+Sudo for GCP servers
+
+  46  2024-03-04 19:45:31 systemctl restart mst-bootstrap
+   47  2024-03-04 19:48:10 yum provides */csh
+   48  2024-03-04 19:48:21 yum install tcsh
+   49  2024-03-04 19:48:54 ls
+   50  2024-03-04 19:49:00 su - rene_whitehead_macys_com
+   51  2024-03-04 19:49:19 ls
+   52  2024-03-04 19:49:27 cd /etc/sudoers.d/
+   53  2024-03-04 19:49:27 ls
+   54  2024-03-04 19:49:31 vi controlm
+   55  2024-03-04 19:50:31 cat /etc/sudoers.d/controlm
+
+
+[root@lnge1bvctmdev0003 sudoers.d]# cat /etc/sudoers.d/controlm
+Defaults:b0_unixops !lecture
+Defaults:b0_unixops !requiretty
+rene_whitehead_macys_com ALL=(ALL) NOPASSWD:/bin/su - controlm
+avinash_mahapatra_macys_com ALL=(ALL) NOPASSWD:/bin/su - controlm
+[root@lnge1bvctmdev0003 sudoers.d]#
+
+
+==================================================================================================================
+
+
+bash-4.2# /opt/ctmagt/ctm/scripts/start-ag -u ctmagt -p all
+
+Starting the agent as 'root' user
+
+Control-M/Agent Listener started. pid: 12059494
+Control-M/Agent Tracker started. pid: 10158710
+
+Control-M/Agent started successfully.
+bash-4.2#
+
+
+===================================================================================================================
+
+Hardware:
+
+
+Power Cycle:
+We typically don’t get involved with troubleshooting devices that would the teams responsibility to come onsite to perform these actions.
+Thanks,
+David.
+
+
+
+Firmware location:
+F:\@ Distributed Operations - Midrange\HPE Firmware
+
+=============================================================================
+[root@ln000xsspl0001 ~]# ssacli ctrl slot=3 ld all show status
+
+   logicaldrive 1 (3.64 TB, RAID 1): OK
+   logicaldrive 2 (3.64 TB, RAID 1): OK
+   logicaldrive 3 (3.64 TB, RAID 1): OK
+   logicaldrive 4 (3.64 TB, RAID 1): OK
+   logicaldrive 5 (3.64 TB, RAID 1): OK
+   logicaldrive 6 (3.64 TB, RAID 1): OK
+
+[root@ln000xsspl0001 ~]#  ssacli ctrl slot=3 pd all show status
+
+   physicaldrive 1I:1:5 (port 1I:box 1:bay 5, 4 TB): OK
+   physicaldrive 1I:1:6 (port 1I:box 1:bay 6, 4 TB): OK
+   physicaldrive 1I:1:7 (port 1I:box 1:bay 7, 4 TB): OK
+   physicaldrive 1I:1:8 (port 1I:box 1:bay 8, 4 TB): OK
+   physicaldrive 1I:1:1 (port 1I:box 1:bay 1, 4 TB): OK
+   physicaldrive 1I:1:2 (port 1I:box 1:bay 2, 4 TB): OK
+   physicaldrive 1I:1:3 (port 1I:box 1:bay 3, 4 TB): OK
+   physicaldrive 1I:1:4 (port 1I:box 1:bay 4, 4 TB): OK
+   physicaldrive 2I:2:1 (port 2I:box 2:bay 1, 4 TB): OK
+   physicaldrive 2I:2:2 (port 2I:box 2:bay 2, 4 TB): OK
+   physicaldrive 2I:2:3 (port 2I:box 2:bay 3, 4 TB): OK
+   physicaldrive 2I:2:4 (port 2I:box 2:bay 4, 4 TB): OK
+
+=============================================================================
+Light on HDD is switch ON
+
+[root@lp000xsiap0012 ~]# ssacli ctrl slot=0 pd 2I:1:6 modify led=on
+
+=============================================================================
+
+[root@mdc1vr1122 ~]# nmap -p 8080 11.48.184.122
+
+Starting Nmap 5.51 ( http://nmap.org ) at 2022-01-22 22:12 EST
+Nmap scan report for mdc1vr1122.federated.fds (11.48.184.122)
+Host is up (0.00012s latency).
+PORT     STATE SERVICE
+8080/tcp open  http-proxy
+
+Nmap done: 1 IP address (1 host up) scanned in 0.15 seconds
+[root@mdc1vr1122 ~]# netstat -anlp | grep 8080
+tcp        0      0 0.0.0.0:8080                0.0.0.0:*                   LISTEN      12690/java
+
+Lan IP Address:
+[root@ln003xsdam0014 ~]# ipmitool lan print | grep "IP Address[[:space:]]*:"
+IP Address              : 11.56.129.38
+
+=============================================================================
+
+For Herald Square servers, please check with robert.kelly@macys.com , he might just need parts shipped, and he can help to replace the storage battery.
+
+Herald Square DataCenter 
+Attention:
+12th Floor/Robert Kelly 
+151 West 34th Street 
+New York, NY 10001
+
+RTP Location:
+
+=============================================================================
+[root@lp000xscas0012 ~]# ssacli ctrl slot=0 show status 
+ 
+Smart Array P440ar in Slot 0 (Embedded)
+   Controller Status: OK
+   Cache Status: OK
+   Battery/Capacitor Status: OK
+
+ ssacli ctrl slot=0 show status 2>&1 | grep -i -E 'Controller Status|Cache Status|Battery/Capacitor Status' | grep -v "OK"
+   Cache Status: Not Configured
+
+
+# /opt/MegaRAID/MegaCli/MegaCli64 -PDList -aAll  | grep -B1 -A44 "Slot Number: 10"
+
+
+=============================================================================
+Enable Cache:
+
+HP Smart Storage Administrator Cache Settings – ByteSizedAlex
+
+1. Open HPE SSA. Reboot server and Press F10
+2. Open the Configure panel by doing one of the following: ... 
+3. Select Cache Manager from the Tools menu.
+4. Click Enable HPE SmartCache in the Actions menu.
+5. Select one or more physical drives from the list of available drives.
+=============================================================================
+
+===================================================================================================
+cpu has been increased from 8 to 10.
+
+no, we never bounce server if CPU hot plugin enabled. OS will have no problem to see newly added CPUs. If CPU hot plugin not enabled, then we need to schedule a down time with app team to coordinate the power off and add CPU/memory.
+ 
+[root@Server1 ~]# grep proc /proc/cpuinfo  | wc -l 
+8
+[root@Server1 ~]# rpm -qf /etc/redhat-release
+oraclelinux-release-7.9-1.0.9.el7.x86_64
+[root@Server1 ~]# grep proc /proc/cpuinfo  | wc -l
+10
+
+
+=============================================================================
+Find out ilo / idrac IP details:
+[root@Server1 ~]# ipmitool lan print 
+Set in Progress         : Set Complete
+Auth Type Support       : MD5
+Auth Type Enable        : Callback : MD5
+                        : User     : MD5
+                        : Operator : MD5
+                        : Admin    : MD5
+                        : OEM      :
+IP Address Source       : Static Address
+IP Address              : 11.48.7.96
+Subnet Mask             : 255.255.252.0
+MAC Address             : b0:83:fe:d7:75:a3
+
+=============================================================================
+
+Server1-con – This wasn’t working and found this dns entry working “Server1-idrac”. After setting SNMP value couldn’t execute your script as it had a check for ‘*con’. I copied the same script excluding that name check and got below output.  
+
+
+
+[root@lp000xslnx0001 bh18353p]# bash validate.sh mdc2pr206-idrac
+Good: correct community string set for mdc2pr206-idrac snmp
+[root@lp000xslnx0001 bh18353p]#
+
+· mdc2pr206-con, ran "racadm set idrac.webserver.HostHeaderCheck 0" per  iDRAC8 firmware version 2.81.81.81: HTTP or HTTPS FQDN Connection Failures | Dell US , the case can be closed. 
+· mdc4brc0103-con, the snmpwalk actually used 35 seconds, previously /usr/local/bin/validate-idrac-snmp require to complete in 3 seconds, so failed. Now I set the completion time to 90 seconds.
+· mdc4brc0104-con, the snmpwalk actually used 35 seconds, previously /usr/local/bin/validate-idrac-snmp require to complete in 3 seconds, so failed. Now I set the completion time to 90 seconds.
+
+=============================================================================
+ 
+ 
+this is more a manage side decision, so need to work with Pavel, Bill and Tejas. From technical point of view, my opinion is always like this:
+	1. only the failed disks need to take urgent action (in redundancy raid or not). typically, no down time is needed. 
+	2. the iLo/iDrac not accessible need to take action, but not urgent. This also needs down time, so could be a pain to schedule the down time since app is still work fine. 
+	3. all other issues (BBU which could cause storage degrade alert, network, firmware etc.), as long as application team doesn't complain, and not alerted by security scan (old firmware), no need to fix. If needs to be fixed, most likely it's a manage side push, need to check with application and see how easily you can get down time. Another possible is ask the monitoring side to tune the policy, so not to alert those kinds of issues. Please be aware, application should be very reluctant for this kind of maintenence, since application side is perfect fine now, with that kind of maintenence, could cause long time down time (e.g., replaced one component, server unbootable, keep on changing the component with several days down time, and in some case, the server might not come online forever).
+
+=============================================================================
+Memory failed detection:
+
+[root@Server1 ~]# dmidecode -t memory | egrep '^[[:space:]]*Locator|Configured Memory Speed'  | xargs | sed 's/Locator/\nLocator/g'
+
+Locator: PROC 1 DIMM 1 Configured Memory Speed: 1866 MT/s
+Locator: PROC 1 DIMM 2 Configured Memory Speed: 1866 MT/s
+Locator: PROC 1 DIMM 3 Configured Memory Speed: 1866 MT/s
+Locator: PROC 1 DIMM 4 Configured Memory Speed: 1866 MT/s
+Locator: PROC 1 DIMM 5 Configured Memory Speed: 1866 MT/s
+Locator: PROC 1 DIMM 6 Configured Memory Speed: 1866 MT/s
+Locator: PROC 1 DIMM 7 Configured Memory Speed: Unknown
+Locator: PROC 1 DIMM 8 Configured Memory Speed: Unknown
+Locator: PROC 2 DIMM 1 Configured Memory Speed: 1866 MT/s
+Locator: PROC 2 DIMM 2 Configured Memory Speed: 1866 MT/s
+Locator: PROC 2 DIMM 3 Configured Memory Speed: 1866 MT/s
+Locator: PROC 2 DIMM 4 Configured Memory Speed: 1866 MT/s
+Locator: PROC 2 DIMM 5 Configured Memory Speed: 1866 MT/s
+Locator: PROC 2 DIMM 6 Configured Memory Speed: 1866 MT/s
+Locator: PROC 2 DIMM 7 Configured Memory Speed: 1866 MT/s
+Locator: PROC 2 DIMM 8 Configured Memory Speed: 1866 MT/s
+
+[root@Server1 ~]# dmidecode -t memory | egrep '^[[:space:]]*Size:|^[[:space:]]*Locator|Configured Memory Speed'  | xargs | sed 's/Size/\nSize/g' | grep -v 'No Module Installed' | grep 'Configured Memory Speed'
+Size: 32 GB Locator: P1-DIMMA1 Configured Memory Speed: 2133 MT/s
+Size: 32 GB Locator: P1-DIMMB1 Configured Memory Speed: 2133 MT/s
+Size: 16384 MB Locator: P1-DIMMC1 Configured Memory Speed: 2133 MT/s
+Size: 32 GB Locator: P1-DIMMD1 Configured Memory Speed: 2133 MT/s
+Size: 32 GB Locator: P2-DIMME1 Configured Memory Speed: 2133 MT/s
+Size: 32 GB Locator: P2-DIMMF1 Configured Memory Speed: 2133 MT/s
+Size: 32 GB Locator: P2-DIMMG1 Configured Memory Speed: 2133 MT/s
+Size: 32 GB Locator: P2-DIMMH1 Configured Memory Speed: 2133 MT/s
+[root@Server1 ~]#
+
+=============================================================================
+Solaris: Dispatch team
+To get FE details:
+DISPATCH-GLOBAL-DGT_WW <dispatch-global-dgt_ww@oracle.com> 
+
+=============================================================================
+Oracle Support:
+
+1a. For US and Canada, dial +1-800-223-1711 or +1.800.668.8921 or +1.905.890.6690
+1b. For the non-US & Canada phone numbers see: https://www.oracle.com/support/contact.html
+2. Press 1 for "Existing SR"
+3. Dial SR number and end with a "#" sign
+4. Press 2 to be transferred to Dispatch
+
+From <https://support.oracle.com/epmos/faces/SrDetail?_adf.ctrl-state=dd5th310f_4&srDetailRelativeDateParam=null&queryModeName=Technical&srNumber=3-35761115751&needSrDetailRefresh=true&_afrLoop=32938675263379> 
+
+
+
+=============================================================================
+
+Solaris:
+
+root@sj01p0d0z0:/solarisosimages/solaris_bkp_2023# pkg publisher solaris
+
+            Publisher: solaris
+                Alias:
+           Origin URI: https://pkg.oracle.com/solaris/support/
+        Origin Status: Online
+              SSL Key: /var/pkg/ssl/a3c5f7877b4de0e4589e888ffd4a27262df4f2a6
+             SSL Cert: /var/pkg/ssl/e27fd82a84f916c46ed5732794c691c1d969fd27
+
+Certificate '/var/pkg/ssl/e27fd82a84f916c46ed5732794c691c1d969fd27' has expired.  Please install a valid certificate.
+
+          Client UUID: 5ecd927a-49cc-11e6-9098-59c3e92dff42
+      Catalog Updated: December 20, 2023 at  4:23:28 PM
+    Publisher enabled: Yes
+
+
+#pkg set-publisher -k /var/tmp/KEYS/pkg.oracle.com.key.pem -c /var/tmp/KEYS/pkg.oracle.com.certificate.pem -G "*" -g https://pkg.oracle.com/solaris/support/ solaris
+
+Key should be 777 permission.
+
+#pkg list -af | grep entire
+
+# explorer
+#/usr/lib/explorer/bin/explorer -q -P
+#explorer EXP_CONTRACT_ID not set!
+
+#/usr/lib/explorer/bin/explorer
+
+--> To findout LDOM servers list
+
+root@sj01p1d0z0:/var/explorer/output# ldm list
+NAME             STATE      FLAGS   CONS    VCPU  MEMORY   UTIL  NORM  UPTIME
+primary          active     -n-cv-  UART    64    64G      1.2%  1.2%  8d 20h 51m
+sj01p1d2z0       active     -n----  5000    568   1894144M  16%   16%  132d 22h
+
+To login ldom console from pdom console.
+
+
+root@s92d0z0:~# ldm ls
+NAME             STATE      FLAGS   CONS    VCPU  MEMORY   UTIL  NORM  UPTIME
+primary          active     -n-cv-  UART    64    32G      0.3%  0.3%  251d 1h
+s92d1z0          active     -n----  5000    480   1535G    0.3%  0.3%  250d 12h
+s92d2z0          active     -n----  5001    176   416G     6.0%  6.0%  250d 19h
+
+# telnet 0 5000
+#telnet 0 5001
+
+root@sj01p1d2z0:/var/tmp# pkg set-publisher -k /var/tmp/KEYS/pkg.oracle.com.key.pem -c /var/tmp/KEYS/pkg.oracle.com.certificate.pem -G "*" -g https://pkg.oracle.com/solaris/support/ solaris
+root@sj01p1d2z0:/var/tmp# pkg publisher
+PUBLISHER                   TYPE     STATUS P LOCATION
+solaris                     origin   online F https://pkg.oracle.com/solaris/support/
+
+
+root@sj01p1d2z0:/var/tmp# pkg set-publisher -k /var/tmp/KEYS/pkg.oracle.com.key.pem -c /var/tmp/KEYS/pkg.oracle.com.certificate.pem -G "*" -g https://pkg.oracle.com/solaris/support/ solaris
+root@sj01p1d2z0:/var/tmp# pkg publisher
+PUBLISHER                   TYPE     STATUS P LOCATION
+solaris                     origin   online F https://pkg.oracle.com/solaris/support/
+
+root@sj01p1d2z0:/var/tmp# pkg list -af | grep entire
+entire                                            11.4-11.4.54.0.1.138.1     ---
+entire                                            11.4-11.4.53.0.1.132.2     ---
+entire                                            11.4-11.4.52.0.1.132.2     ---
+entire                                            11.4-11.4.51.0.1.132.1     ---
+entire                                            11.4-11.4.50.0.1.126.3     ---
+entire                                            11.4-11.4.49.0.1.126.2     ---
+entire                                            11.4-11.4.48.0.1.126.1     ---
+entire                                            11.4-11.4.47.0.1.119.2     ---
+entire                                            11.4-11.4.46.0.1.119.2     ---
+entire                                            11.4-11.4.45.0.1.119.2     ---
+entire                                            11.4-11.4.44.0.1.113.4     i--
+entire                                            11.4-11.4.43.0.1.113.3     ---
+entire                                            11.4-11.4.42.0.1.113.1     ---
+entire                                            11.4-11.4.41.0.1.107.2     ---
+entire                                            11.4-11.4.40.0.1.107.3     ---
+entire                                            11.4-11.4.39.0.1.107.1     ---
+entire                                            11.4-11.4.38.0.1.101.6     ---
+entire                                            11.4-11.4.37.0.1.101.1     ---
+entire                                            11.4-11.4.36.0.1.101.2     ---
+entire                                            11.4-11.4.35.0.1.94.4      ---
+entire                                            11.4-11.4.34.0.1.94.4      ---
+entire                                            11.4-11.4.33.0.1.94.0      ---
+entire                                            11.4-11.4.32.0.1.88.3      ---
+entire                                            11.4-11.4.31.0.1.88.5      ---
+entire                                            11.4-11.4.30.0.1.88.3      ---
+entire                                            11.4-11.4.29.0.1.82.3      ---
+entire                                            11.4-11.4.28.0.1.82.3      ---
+entire                                            11.4-11.4.27.0.1.82.1      ---
+entire                                            11.4-11.4.26.0.1.75.4      ---
+entire                                            11.4-11.4.25.0.1.75.3      ---
+entire                                            11.4-11.4.24.0.1.75.2      ---
+entire                                            11.4-11.4.23.0.1.69.3      ---
+entire                                            11.4-11.4.22.0.1.69.4      ---
+entire                                            11.4-11.4.21.0.1.69.0      ---
+entire                                            11.4-11.4.20.0.1.4.0       ---
+entire                                            11.4-11.4.19.0.1.3.0       ---
+entire                                            11.4-11.4.18.0.1.4.0       ---
+entire                                            11.4-11.4.17.0.1.3.0       ---
+entire                                            11.4-11.4.16.0.1.4.0       ---
+entire                                            11.4-11.4.15.0.1.5.0       ---
+entire                                            11.4-11.4.14.0.1.5.0       ---
+entire                                            11.4-11.4.13.0.1.4.0       ---
+entire                                            11.4-11.4.12.0.1.5.0       ---
+entire                                            11.4-11.4.11.0.1.4.0       ---
+entire                                            11.4-11.4.10.0.1.3.0       ---
+entire                                            11.4-11.4.9.0.1.5.0        ---
+entire                                            11.4-11.4.8.0.1.5.0        ---
+entire                                            11.4-11.4.7.0.1.5.0        ---
+entire                                            11.4-11.4.7.0.1.4.0        ---
+entire                                            11.4-11.4.6.0.1.4.0        ---
+entire                                            11.4-11.4.5.0.1.3.0        ---
+entire                                            11.4-11.4.4.0.1.4.0        ---
+entire                                            11.4-11.4.3.0.1.5.0        ---
+entire                                            11.4-11.4.2.0.1.3.0        ---
+entire                                            11.4-11.4.1.0.1.4.0        ---
+entire                                            11.4-11.4.0.0.1.15.0       ---
+root@sj01p1d2z0:/var/tmp#
+
+
+
+
+To check each zone running tibco processes
+for i in `zoneadm list|grep -v global`; do zlogin $i uname -a; sleep 5; zlogin $i ps -ef | grep -i pmon |wc -l; echo;  done
+
+To check each zone df command
+for i in `zoneadm list|grep -v global`; do zlogin $i uname -a; sleep 5; zlogin $i df -h; done
+
+To check each zone services status
+for i in `zoneadm list|grep -v global`; do zlogin $i uname -a; sleep 1; zlogin $i svcs -xv; done
+
+To check each zone Boot Environment status
+for i in `zoneadm list|grep -v global`; do zlogin $i uname -a; sleep 5; zlogin $i beadm list; done
+
+To check each zone confugurations status
+for i in `zoneadm list|grep -v global`; do zonecfg -z $i info; sleep 5; done
+
+Take backup of zones config files
+# cp -rp /var/share/zones/index.json /var/share/zones/index.json.bkp04042023
+#cat /var/share/zones/index.json
+
+To check each zone publisher status
+for i in `zoneadm list|grep -v global`; do zlogin $i uname -a; sleep 1; zlogin $i pkg publisher solaris; done
+
+To mount missed mount points:
+#for i in `zoneadm list|grep -v global`; do zlogin $i uname -a; sleep 1; zlogin $i mount -a; done
+
+
+To take full backup
+for i in `zoneadm list|grep -v global`; do zlogin $i uname -a; sleep 3; zlogin $i beadm list;zlogin $i df -h;zlogin $i svcs -a;zlogin $i pkg info jre-8;done
+
+
+for i in `zoneadm list|grep -v global`; do zlogin $i uname -a; zlogin $i cd /appls/controlm/ctm/scripts;./start-ag; done
+
+Run these two commands on PDOM
+[sj01p0d0z0:/root] 6 ldm list-spconfig
+factory-default
+initial.03052019
+initial.03062019
+initial.04082019
+initial.04122019
+initial.23072019
+initial.08232019
+initial.09242019
+initial.30092019
+initial.02122020
+initial.02132020
+initial.09172021
+initial.02162022
+initial.09182022
+initial.02092023 [next poweron]
+[sj01p0d0z0:/root] 7
+
+
+[sj01p0d0z0:/root] 7 ldm add-spconfig initial.11082023
+[sj01p0d0z0:/root] 8
+
+If system is out of RAM then remove old backup
+#ldm remove-config initial.02132020
+
+Once you executed above commands, you can reboot LDOM server. (Don't reboot PDOM)
+
+Once LDOM is back, verify services on LDOM and zones as well. # svcs -xv
+
+
+Run this command on both LDON and PDOM simultaneously. 
+#pkg update --accept entire@11.4-11.4.64.0.1.157.2
+
+#
+pkg update -v --accept --be-name solaris11.4SRU53 entire@11.4-11.4.53.0.1.132.2
+
+
+
+
+Once completed reboot PDOM and next LDOM.
+
+
+--> if you stuck in console or some has already took console.
+
+#start -f /HOST/console
+
+
+Once patches done and before reboot on both PDOM / LDOM
+
+[sj01p1d0z0:/mnt/etc/pam.d]#  beadm mount  11.4.64.157.2 /mnt
+cd /mnt/etc/pam.d; cat other | grep -i securid
+#grep -i securid  /mnt/etc/pam.d/other
+
+# grep noannotation /etc/pam.d/sshd-pubkey
+#auth   required        pam_unix_cred.so.1 noannotation
+
+beadm umount  11.4.64.157.2
+
+make sure this entry should be commented
+
+#auth    required        pam_securid.so
+
+[sj01p1d0z0:/root] 1 beadm list
+BE Name       Flags Mountpoint Space  Policy Created
+------------- ----- ---------- ------ ------ ----------------
+11.4.44.113.4 N     /          2.07G  static 2022-10-06 21:49
+11.4.52.132.2 R     /mnt       32.95G static 2023-02-17 01:19
+ann_test_be   -     -          5.25G  static 2018-05-22 21:21
+solaris-3     -     -          6.10G  static 2018-08-15 21:06
+solaris-4     -     -          4.75G  static 2019-08-22 11:15
+solaris-5     -     -          2.77G  static 2022-04-21 23:57
+
+[sj01p1d0z0:/root] 2 beadm umount 11.4.57.144.3
+[sj01p1d0z0:/root] 3 beadm list
+BE Name       Flags Mountpoint Space  Policy Created
+------------- ----- ---------- ------ ------ ----------------
+11.4.44.113.4 N     /          2.07G  static 2022-10-06 21:49
+11.4.52.132.2 R     -          32.95G static 2023-02-17 01:19
+ann_test_be   -     -          5.25G  static 2018-05-22 21:21
+solaris-3     -     -          6.10G  static 2018-08-15 21:06
+solaris-4     -     -          4.75G  static 2019-08-22 11:15
+solaris-5     -     -          2.77G  static 2022-04-21 23:57
+[sj01p1d0z0:/root] 4
+
+
+
+
+--> reboot PDOM first and then LDOM
+
+
+
+
+
+=================================================================================
+▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
+
+Python issue:
+
+The "svc:/application/odoc-import:default" goes into MAINTENANCE in NON-Global ZONE after the system was upgraded to 11.4.52.132.2 :
+
+
+[ 2023 Feb 16 03:10:52 Method "start" exited with status 1. ]
+[ 2023 Feb 16 03:10:52 Executing start method ("/usr/bin/odoctool import-index"). ]
+Fatal Python error: init_importlib: can't import _imp
+Python runtime state: preinitialized
+ValueError: iconv_open() failed
+
+Current thread 0x0000000000000001 (most recent call first):
+<no Python frame>
+[ 2023 Feb 16 03:10:52 Method "start" exited with status 1. ]
+
+
+
+Its a known issue as explained in the below doc :
+
+svc:/application/odoc-import:default service fails to start in NON-Global zones when using non UTF-8 locales ( Doc ID 2913534.1 )
+
+Kindly go though the doc and follow the workaround,
+
+SOLUTION :
+
+The workaround is to explicitly install the inconv package in the affected ZONE(s)
+
+# pkg install system/library/iconv
+
+The fix is provided in SRU 11.4.54 or later.
+
+
+Reboot each zone after install python package.
+
+#for i in `zoneadm list|grep -v global`; do zlogin $i uname -a; sleep 5; zlogin $i pkg install system/library/iconv; done
+#for i in `zoneadm list|grep -v global`; do zlogin $i uname -a; sleep 5; zlogin $i reboot; done
+=========================================================================
+Jboss - Naresh Ponnagani
+Tibco - Shaik Syed Pasha
+DB MFA - Mohammed Ahmed
+===============================================================================
+root@s92d2z0:~# zoneadm list -civ
+  ID NAME             STATUS      PATH                         BRAND      IP
+   0 global           running     /                            solaris    shared
+   1 s92d2z2          running     /zones/s92d2z2               solaris10  shared
+   2 s92d2z1          running     /zones/s92d2z1               solaris    shared
+   - s92d2z3          installed   /zones/s92d2z3               solaris    shared
+root@s92d2z0:~# zoneadm -z s92d2z3 boot
+root@s92d2z0:~# zoneadm list -civ
+  ID NAME             STATUS      PATH                         BRAND      IP
+   0 global           running     /                            solaris    shared
+   1 s92d2z2          running     /zones/s92d2z2               solaris10  shared
+   2 s92d2z1          running     /zones/s92d2z1               solaris    shared
+   3 s92d2z3          running     /zones/s92d2z3               solaris    shared
+root@s92d2z0:~#
+================================================================================
+
+root@s93d0z0:/var/tmp# pkg set-publisher -k /var/tmp/KEYS/pkg.oracle.com.key.pem -c /var/tmp/KEYS/pkg.oracle.com.certificate.pem -G "*" -g https://pkg.oracle.com/solaris/support/ solaris
+The origin URIs for 'solaris' do not appear to point to a valid pkg repository.
+Please verify the repository's location and the client's network configuration.
+Additional details:
+ 
+Unable to contact valid package repository: https://pkg.oracle.com/solaris/support/
+Encountered the following error(s):
+Transport errors encountered when trying to contact repository.
+Reported the following errors:
+  Framework error: code: E_COULDNT_RESOLVE_HOST (6) reason: Could not resolve host: pkg.oracle.com
+URL: 'https://pkg.oracle.com/solaris/support' (happened 4 times)
+ 
+root@s93d0z0:/var/tmp#
+
+Resolution:
+
+Unset / remove pkg publisher from global zone and put new certifcates under /var/tmp/KEYS and run below command
+pkg set-publisher -k /var/tmp/KEYS/pkg.oracle.com.key.pem -c /var/tmp/KEYS/pkg.oracle.com.certificate.pem -g https://pkg.oracle.com/solaris/support/ solaris
+==================================================================================
+
+Exadata Server patching steps:
+
+1)Check your cyberark and root access
+2)ask DB to stop pmon processes if exists any
+#ps -ef | grep -i pmon
+3)check status and stop cluster service
+check service status
+#/u01/app/19.0.0.0/grid/bin/crsctl check crs
+Stop service
+#/u01/app/19.0.0.0/grid/bin/crsctl stop crs
+3)take df -h output backup
+4)take fstab backup
+5)comment NFS mounts in fstab and unmount NFS share mounts
+6)take pam.d config files (password.auth and system-auth)
+7)take mail config backup (/etc/mail/sendmail.cf file)
+# "Smart" relay host (may be null)
+DSappmail.federated.fds
+8)take backup of oracle user crontab
+#crontab -u orcale -l
+## crontab -u oracle -l > /tmp/racle-crontab
+9)ensure no pmon and oracle processes are exist on DB server
+#ps -ef | grep -i pmon
+10)you can handover server to Platinum Team for patch Exadata server from their end.
+11)Handover server to DB team once Platinum team is completed patching
+12)Samething repeat for next DB server in sequence order
+
+==============================================================================================
+
+# pkg unset-publisher solaris
+Updating package cache                           1/1
+
+pkg unset-publisher: Removal failed for 'solaris': solaris is a system publisher and cannot be unset.
+
+Solutions:
+root@s93d0z0:/var/tmp/KEYS# svccfg -s system/name-service/switch
+svc:/system/name-service/switch> setprop config/host = astring: "files dns"
+svc:/system/name-service/switch> exit
+root@s93d0z0:/var/tmp/KEYS# svcadm refresh name-service/switch
+root@s93d0z0:/var/tmp/KEYS# svcadm restart name-service/switch
+
+
+==========================================================================================================
+Check CRS or cluster service:
+
+root@sj06d0z1:/etc/init.d# /u01/app/19.0.0.0/grid/bin/crsctl check has
+CRS-4638: Oracle High Availability Services is online
+
+============================================================================================
+Boot issue:
+Ok prompt:
+
+{0} ok devalias
+bootvdisk0               /virtual-devices@100/channel-devices@200/disk@7:a
+disk111-s92d2z3_apps_new  /virtual-devices@100/channel-devices@200/disk@17
+disk110-s92d2z3_www_new  /virtual-devices@100/channel-devices@200/disk@16
+disk109-s92d2z3_appls_new  /virtual-devices@100/channel-devices@200/disk@15
+disk108-s92d2z3_apache_new  /virtual-devices@100/channel-devices@200/disk@14
+disk107-s92d2z3_rpool_new  /virtual-devices@100/channel-devices@200/disk@13
+disk106-s92d2z2_rpool_new  /virtual-devices@100/channel-devices@200/disk@12
+disk105-s92d2z1_brandsas_new  /virtual-devices@100/channel-devices@200/disk@7
+disk104-s92d2z1_brand_new  /virtual-devices@100/channel-devices@200/disk@5
+disk103-s92d2z1_sas_new  /virtual-devices@100/channel-devices@200/disk@4
+disk102-s92d2z1_rpool_new  /virtual-devices@100/channel-devices@200/disk@2
+disk101-s92d2z0_rpool_new  /virtual-devices@100/channel-devices@200/disk@1
+disk100-s92d2z2_apps_new  /virtual-devices@100/channel-devices@200/disk@0
+cdrom                    /virtual-devices@100/channel-devices@200/disk@6
+sol10image               /virtual-devices@100/channel-devices@200/disk@3
+vnet1                    /virtual-devices@100/channel-devices@200/network@0
+net                      /virtual-devices@100/channel-devices@200/network@0
+disk                     /virtual-devices@100/channel-devices@200/disk@3
+virtual-console          /virtual-devices/console@1
+name                     aliases
+
+{0} ok boot  /virtual-devices@100/channel-devices@200/disk@1
+===========================================================================================
+ svc:/system/filesystem/local:default 
+
+root@sj01p1d2z0:/# zfs destroy rpool/home/ansible
+---> remove files under /home
+# zfs mount -a
+# svcadm enable -t svc:/system/filesystem/local:default
+
+#svcadm refresh svc:/system/filesystem/local:defaul
+#svcadm clear svc:/system/filesystem/local:defaul
+=====================================================================================================
+
+To go to ldom OK prompt:
+
+ #ldm set-var auto-boot?=false sj02p0d1z0
+root@sj02p0d0z0:~# ldm ls
+NAME             STATE      FLAGS   CONS    VCPU  MEMORY   UTIL  NORM  UPTIME
+primary          active     -n-cv-  UART    64    64G      0.2%  0.2%  26m
+sj02p0d1z0       active     -n----  5000    784   1832G    0.2%  0.2%  7m
+root@sj02p0d0z0:~# ldm stop sj02p0d1z0
+LDom sj02p0d1z0 stopped
+root@sj02p0d0z0:~# ldm start sj02p0d1z0
+LDom sj02p0d1z0 started
+
+
+Boot disk0-sj02p0d1z0-root-new  /virtual-devices@100/channel-devices@200/disk@3cf
+=======================================================
+
+/  "root" filesystem cleanup
+
+[root@dml4db02 oracle.ExaWatcher]# pwd
+/opt/oracle.ExaWatcher
+mkdir -p /qfsdp/EXAWATCHER/dml4db02-04272022
+cp -r archive /qfsdp/EXAWATCHER/dml4db02-04272022
+cd archive
+du -sh *| sort -rh | head
+1.1G    Ps.ExaWatcher
+821M    Top.ExaWatcher
+566M    TopPid.ExaWatcher
+514M    Netstat.ExaWatcher
+488M    Lsof.ExaWatcher
+
+cd Ps.ExaWatcher
+rm -Rf *.bz2
+cd ../Top.ExaWatcher
+rm -Rf *.bz2
+cd ../TopPid.ExaWatcher
+rm -Rf *.bz2
+
+[root@dml4db02 Netstat.ExaWatcher]# df -hP /
+Filesystem                    Size  Used Avail Use% Mounted on
+/dev/mapper/VGExaDb-LVDbSys1   30G   21G  7.8G  73% /
+\=============================================================================
+
+Oswatcher / Exawatcher output:
+
+
+cd /opt/oracle.ExaWatcher; ./GetExaWatcherResults.sh --from 10/19/2023_01:00:00 --to 10/19/2023_02:00:00
+
+cd /opt/oracle.ExaWatcher; ./GetExaWatcherResults.sh --from 03/19/2024_16:23:00 --to 03/19/2024_18:23:00
+
+==========================================================
+
+ps -eo pcpu,pid,user,args | sort -k 1 -r | head -10
+
+
+
+==========================================================
+
+root@sj01p0d1z0:~# swap -l
+swapfile                 dev            swaplo      blocks        free encrypted
+/dev/zvol/dsk/rpool/swap 303,5               0    35651584    26564560       yes
+
+root@sj01p0d1z0:~# vmstat -p
+     memory           page          executable      anonymous      filesystem
+   swap  free  re  mf  fr  de  sr  epi  epo  epf  api  apo  apf  fpi  fpo  fpf
+ 807426952 730440456 6174 12408 0 0 0 0   0    0   99    0    0  382    0    0
+
+Top:
+
+last pid: 12924;  load avg:  13.8,  13.8,  15.0;  up 226+20:57:49                                                                    21:50:56
+5580 processes: 5522 sleeping, 28 zombie, 19 stopped, 11 on cpu
+CPU states: 98.3% idle,  0.5% user,  1.3% kernel,  0.0% stolen,  0.0% swap
+Kernel: 87384 ctxsw, 32062 trap, 50322 intr, 149200 syscall, 64 fork, 13389 flt, 24 pgin
+Memory: 1832G phys mem, 1101G free mem, 17G total swap, 13G free swap
+
+=============================================================
+
+Nix Inventory URL: 
+Macy's *NIX Inventory
+
+Root password:
+
+Kj..aomS1!
+Welcome1
+
+
+Main sheets : solaris_non_engineered_path  & Eng System patching Schedule Year 2022
+Reference Sheets : Latest inventory-Pavel & Eng System Patching schedule Year 2022 patching-OCT062021 (003)
+ 
+Completed servers :  Sj01 , Sj02, Sj03 , Sj04, Sj06, SJ07 ,SJ08, SJ09, Sj10.
+ 
+Recording link :  https://macysinc-my.sharepoint.com/:v:/r/personal/balakrishna_tumati_macys_com/Documents/Recordings/Solaris%20Nix%20inventory%20update-20220811_092222-Meeting%20Recording.mp4?csf=1&web=1&e=vhxGMe
+ 
+Number of cores
+ 
+# echo "`kstat -m cpu_info|grep -w core_id|uniq|wc -l` core(s) "
+ 
+To get Memory details
+ 
+# Top
+# Prtdiag -v  
+
+Model:
+
+#psrinfo -pv
+ 
+Application Name
+ 
+# zonecfg -z s86d0z1 info
+EX: 
+ 
+
+
+
+
+PeopleSoft : 
+manojkumar.fofandi@macys.com
+
+JBOSS MAGIC PFL:
+MstTIBCOOps@macys.com
+
+One HR:
+barry.sherrick@macys.com
+
+Middleware TIBCO EMS server for JC PROD Environment-EMS, Hawk
+MSTTIBCOADMIN@macys.com
+
+
+
+
+=====================================================================================
+
+
+pkg update -nv --accept entire@11.4-11.4.44.0.1.113.4 > /var/tmp/pkg-update1.out 2>&1
+
+shutdown -i6 -g0 -y
+
+ svcadm restart svc:/network/smtp:sendmail
+Svcs -a | grep - sendmail
+
+
+=====================================================================================
+
+To check memory/Swap utilisations:
+
+prstat -a
+=============================================================================
+root@scj4db01:/etc/mail# grep DS sendmail.cf 
+DSappmail.federated.fds
+# Return-Receipt-To: header implies DSN request
+# DHParameters (only required if DSA/DH is used)
+
+
+root@scj4db01:/etc/mail# svcs -a | grep mail
+online         18:01:43        svc:/network/sendmail-client:default
+online         18:43:03        svc:/network/smtp:sendmail
+
+#svcadm restart svc:/network/sendmail-client:default
+#svcadm restart svc:/network/smtp:sendmail
+#mailx -v -s "test subject" venkatesh.veerabattini@macys.com  < /dev/null
+====================================================================================
+User access issue:
+
+cat /etc/opt/quest/vas/users.allow
+
+root@s92d2z0:/etc/opt/quest/vas# pwd
+/etc/opt/quest/vas
+root@s92d2z0: #cd /etc/opt/quest/vas; cat users.allow
+UxRG_s92d1z0
+UxAG_mst_ifs_mon
+svc-arxview
+UxAG_sysadmin_Solaris
+MTECH-CyberArk-ServiceAccounts
+
+Sudo file :
+
+cat /etc/opt/quest/qpm4u/policy/sudoers
+
+To rejoin the server into AD domain, take password from CyberArk tool
+
+#/opt/quest/bin/vastool -u b0_unixops join -f federated.fds ma000xsfed01.federated.fds ma000xsfed02.federated.fds
+#/opt/quest/bin/vastool flush
+#/opt/quest/bin/vgptool apply
+
+#/opt/quest/bin/vastool user checkaccess bh19192p
+====================================================================================
+
+As per recommendation I had disable sstored at zones scr4db02z1.It’ll not impact anything and stopped the generation of unwanted core.sstored files at root.MOS engineer also recommended to do next level patching which is already planned in our patching schedule.
+--> take latest core file back up on any folder /tmp or /var
+
+-rw-------   1 root     root     208976495 Jan 10 01:19 core.sstored.1673331556
+-rw-------   1 root     root     195015207 Jan 10 03:19 core.sstored.1673338756
+
+
+#svcadm disable svc:/system/sstore:default
+root@scr4db02z1:~# svcs -a|grep svc:/system/sstore:default
+disabled       21:35:40        svc:/system/sstore:default
+
+======================================================================================
+
+
+====================================================================================
+Controlm agent is not running
+
+cd /appls/controlm/ctm/scripts;./start-ag
+./start-ag
+
+==============================================================================================
+
+Cache clear:
+
+/proc# echo ::memstat | mdb -k
+
+#sync ; echo 3 > /proc/sys/vm/drop_cache
+
+=====================================================================================
+
+
+show /HOST
+
+ /HOST
+    Targets:
+        bootmode
+        console
+        diag
+        domain
+        tpm
+        verified_boot
+
+    Properties:
+        alert_forwarding = disabled
+        autorestart = reset
+        autorunonerror = poweroff
+        bootfailrecovery = poweroff
+        bootrestart = none
+        boottimeout = 0
+        gm_version = GM 1.6.15 2019/01/25 12:36
+        hostconfig_version = Hostconfig 1.6.15 2019/01/25 12:22
+        hw_bti_mitigation = default (enabled)
+        hypervisor_version = Hypervisor 1.15.17 2019/01/25 12:02
+        ioreconfigure = add_only
+        keyswitch_state = Normal
+        macaddress = 00:10:e0:35:16:00
+        maxbootfail = 3
+        obp_version = OpenBoot 4.38.17 2019/01/25 08:22
+        post_version = POST 5.3.15 2019/01/25 12:07
+        send_break_action = (Cannot show property)
+        state_capture_mode = default
+        state_capture_on_error = enabled
+        state_capture_status = enabled
+        status = Solaris running
+        status_detail = 20220723 03:27:55: Host status updated
+        sysfw_version = Sun System Firmware 9.6.25 2019/01/25 14:16
+
+    Commands:
+        cd
+        set
+        show
+
+-> start /SP/faultmgmt/shell
+Are you sure you want to start /SP/faultmgmt/shell (y/n)? y
+ 
+faultmgmtsp> fmadm faulty
+No faults found
+faultmgmtsp>
+
+====================================================================
+
+find . -type f -mtime +30 -exec ls -ld {} \;  | grep -v gz | wc -l
+
+
+====================================================================
+Exachk  Resolution
+ 
+Finally Exachk collection completed on dmd1 server and uploaded in the oracle case. If you encountered below issues on any Exadata server please use the below workaround.
+ 
+Error :
+ 
+Traceback (most recent call last):
+File "/opt/oracle.ahf/python/lib/python3.10/multiprocessing/process.py", line 314, in _bootstrap
+self.run()
+File "/opt/oracle.ahf/python/lib/python3.10/multiprocessing/process.py", line 108, in run
+self._target(*self._args, **self._kwargs)
+File "/ade/b/3181994098/oracle/tfa/src/orachk_py/src/lib/discover_env.py", line 24123, in _remote_copy_pybuild
+File "/ade/b/3181994098/oracle/tfa/src/orachk_py/src/lib/utils.py", line 3113, in native_rcopy_pybuild
+File "/opt/oracle.ahf/python/lib/python3.10/posixpath.py", line 142, in basename
+ 
+Or 
+ 
+python3.9: error while loading shared libraries: libpython3.9.so.1.0: cannot open shared object file: No such file or directory
+ 
+Please use the below Workarund.
+ 
+ 
+Uninstall and reinstall the latest version of AHF.
+ 
+	
+	
+	Can you try to reinstall AHF
+	
+	1. Uninstall using the below command
+	
+	# ahfctl uninstall 
+	
+	2. Then run a local AHF setup
+	
+	# ./ahf_setup 
+ 
+If it is single node 
+ 
+	Hi,
+	
+	Can you try to reinstall AHF on this node dmd1db02
+	
+	1. Uninstall using the below command
+	
+	# ahfctl uninstall -local
+	
+	2. Then run a local AHF setup
+	
+	# ./ahf_setup -local
+ 
+Latest package I downloaded to my home folder 
+ 
+Dmd1db01:/home/bh18453p
+========================================================================================
+
+Oracle SR / SN Incident/PRB ticket – tracking in confluence for 2023 ( High priority )
+https://confluence.federated.fds/pages/viewpage.action?pageId=268979304
+ 
+Open items:
+IB switches – access update
+Solaris root password not working – Maurice from CyberArk 
+ 
+Confluence patching page up to date prior to Brian overview
+Exadata: https://confluence.federated.fds/display/~B004704/Oracle+Exadata+servers+patching+schedule+-+2023
+SuperCluster: https://confluence.federated.fds/display/~B004704/Engineering+Solaris+systems+patching+schedule+-+2023
+Non Engineering Solaris: https://confluence.federated.fds/display/~B004704/Non-engineering+Solaris+systems+patching+schedule+-+2023	
+Executive Dashboard - Exadata/Solaris systems patching - C&O Solaris/Exadata Home - Macy's Confluence (federated.fds)
+===========================================================
+Single usermode and reset password
+
+login as: root
+Keyboard-interactive authentication prompts from server:
+| Password:
+End of keyboard-interactive prompts from server
+
+Oracle(R) Integrated Lights Out Manager
+
+Version 5.1.0.1 r147963
+
+Copyright (c) 2022, Oracle and/or its affiliates. All rights reserved.
+
+lWarning: HTTPS certificate is set to factory default.
+
+Hostname: sj01p0-ilom (Active SP)
+
+-> s
+Invalid command 's' - type help for a list of commands.
+
+-> ls
+
+ /
+    Targets:
+        HOST0
+        HOST1
+        Servers
+        System
+        SP
+
+    Properties:
+
+    Commands:
+        cd
+        show
+
+-> set /HOST1/bootmode script="setenv auto-boot? false"
+Set 'script' to 'setenv auto-boot? false'
+
+-> set /HOST1 send_break_action=break
+Set 'send_break_action' to 'break'
+
+->
+-> ls
+
+ /
+    Targets:
+        HOST0
+        HOST1
+        Servers
+        System
+        SP
+
+    Properties:
+
+    Commands:
+        cd
+        show
+
+-> start /HOST1/console
+Are you sure you want to start /HOST1/console (y/n)? y
+
+Serial console started.  To stop, type #.
+
+c)ontinue, s)ync, r)eset? r
+Resetting...
+NOTICE: Entering OpenBoot.
+NOTICE: Fetching Guest MD.
+NOTICE: Starting slave cpus.
+NOTICE: Initializing LDCs.
+ChassisSerialNumber AK00335830
+NOTICE: Probing PCI devices.
+NOTICE: Finished PCI probing.
+NOTICE: Probing USB devices.
+NOTICE: Finished USB probing.
+
+SPARC M7-8, No Keyboard
+Copyright (c) 1998, 2022, Oracle and/or its affiliates. All rights reserved.
+OpenBoot 4.43.9, 64.0000 GB memory installed, Serial #105352265.
+Ethernet address 0:10:e0:47:8c:55, Host ID: 86478c49.
+
+
+
+{400} ok boot -L
+Boot device: /pci@315/pci@1/nvme@0/disk@1  File and args: -L
+Boot environments:
+
+1 : ann_test_be
+2 : solaris-3
+3 : solaris-4
+4 : solaris-5
+5 : 11.4.44.113.4
+6 : 11.4.52.132.2
+Select boot environment: 5
+SunOS Release 5.11 Version 11.4.44.113.4 64-bit
+Copyright (c) 1983, 2021, Oracle and/or its affiliates.
+WARNING: drvconf_addto_par_spec: no major number for sf
+WARNING: svccfg apply /etc/svc/profile/node/migrated_etc_svc_profile_site_profile_90:E2:BA:AC:30:84.UUqlYw.xml failed
+
+============================================
+
+Memory disable for fault memory:
+
+-> show DIMM_59
+ 
+/System/Memory/DIMMs/DIMM_59
+    Targets:
+ 
+    Properties:
+        health = Service Required
+        health_details = fault.memory.dimm-page-retires-excessive fault.memory.dimm-page-retires-excessive Type 'show /System/Open_Problems' for details.
+        requested_state = Enabled
+        part_number = 7014672,HMT31GR7BFR4A-H9
+        serial_number = 00AD0111410610039E
+        location = PM1/CMP1/BOB2/CH1/D1 (Processor Module 1 CMP 1 Memory Branch 2 Memory Channel 1 DIMM 1)
+        manufacturer = Hynix Semiconductor Inc.
+        memory_size = 8 GB
+
+
+-> set /SYS/PM1/CMP1/BOB2/CH1/D1 component_state=Disabled
+Set 'component_state' to 'Disabled'
+
+-> pwd
+Current default target: /SYS/PM1/CMP1/BOB2/CH1/D1
+
+-> ls
+
+ /SYS/PM1/CMP1/BOB2/CH1/D1
+    Targets:
+        SERVICE
+        T_AMB
+
+    Properties:
+        type = DIMM
+        ipmi_name = P1C1/B2/C1/D1
+        component_state = Disabled
+        fru_name = 8192MB DDR3 SDRAM DIMM
+        fru_manufacturer = Hynix Semiconductor Inc.
+        fru_part_number = 7014672,HMT31GR7BFR4A-H9
+        fru_rev_level = 02
+        fru_serial_number = 00AD0111410610039E
+        fault_state = Faulted
+        clear_fault_action = (none)
+
+    Commands:
+        cd
+        set
+        show
+
+-> stop /SYS
+Are you sure you want to stop /SYS (y/n)? y
+Stopping /SYS
+-> start /SYS
+Are you sure you want to start /SYS (y/n)? Y
+======================================================================================================
+If zones are not running
+
+
+  - s72d0z8          installed   /zones/s72d0z8               solaris    shared
+   - s72d0z9          installed   /zones/s72d0z9               solaris    shared
+root@s72d0z0:/etc/zones# zoneadm -z s72d0z8 detach
+root@s72d0z0:/etc/zones# zoneadm list -civ
+  ID NAME             STATUS      PATH                         BRAND      IP
+   0 global           running     /                            solaris    shared
+   1 s72d0z5          running     /zones/s72d0z5               solaris    shared
+   2 s72d0z4          running     /zones/s72d0z4               solaris    shared
+   3 s72d0z7          running     /zones/s72d0z7               solaris    shared
+   4 s72d0z1          running     /zones/s72d0z1               solaris    shared
+   5 s72d0z3          running     /zones/s72d0z3               solaris    shared
+   6 s72d0z6          running     /zones/s72d0z6               solaris    shared
+  16 s72d0z2          running     /zones/s72d0z2               solaris    shared
+   - s72d0z8          configured  /zones/s72d0z8               solaris    shared
+   - s72d0z9          installed   /zones/s72d0z9               solaris    shared
+root@s72d0z0:/etc/zones# zoneadm -z s72d0z8 attach -U
+
+#zoneadm -z <zonename> boot
+
+=======================================================================================================
+Steps to install Cohesity in Solaris servers: 
+ 
+	1) Cohesity package is available in Solaris s39d0z0 and try to scp to required Solaris server.
+	 
+root@s39d0z0:/var/tmp/cohesity# pwd
+/var/tmp/cohesity
+root@s39d0z0:/var/tmp/cohesity# ls -l | grep -i cohesity
+-rwxrwxrwx   1 BH18353P FSG      85454848 Apr  7 14:20 cohesity_agent_6.6.0d_u5_solaris
+root@s39d0z0:/var/tmp/cohesity# scp cohesity_agent_6.6.0d_u5_solaris scj2t3d1z2:/var/tmp
+ 
+	1) Try to install Cohesity software with pkgadd command (Example : s39d0z0)
+ 
+# pkgadd -d cohesity_agent_6.6.0d_u5_solaris
+ 
+The following packages are available:
+  1  cohesity-agent     Cohesity Agent
+                        (sparc) 0.1
+ 
+Select package(s) you wish to process (or 'all' to process
+all packages). (default: all) [?,??,q]:
+ 
+Processing package instance <cohesity-agent> from </var/tmp/cohesity/cohesity_agent_6.6.0d_u5_solaris>
+ 
+Cohesity Agent(sparc) 0.1
+© Cohesity, Inc. 2018.  All rights reserved.
+## Executing checkinstall script.
+Using </> as the package base directory.
+## Processing package information.
+## Processing system information.
+   8 package pathnames are already properly installed.
+## Verifying disk space requirements.
+## Checking for conflicts with packages already installed.
+ 
+The following files are already installed on the system and are being
+used by another package:
+* /var/log <attribute change only>
+ 
+* - conflict with a file which does not belong to any package.
+ 
+Do you want to install these conflicting files [y,n,?,q] y
+## Checking for setuid/setgid programs.
+ 
+This package contains scripts which will be executed with super-user
+permission during the process of installing this package.
+ 
+Do you want to continue with the installation of <cohesity-agent> [y,n,?] y
+ 
+Installing Cohesity Agent as <cohesity-agent>
+ 
+## Executing preinstall script.
+## Installing part 1 of 1.
+/lib/svc/method/cohesity-agent
+/usr/local/cohesity/agent/cohesity_solaris_agent_exec
+/usr/local/cohesity/agent/common.sh
+/usr/local/cohesity/agent/env.sh
+/usr/local/cohesity/agent/libgcc_s.so.1.gz
+/usr/local/cohesity/agent/libgo.so.13.gz
+/usr/local/cohesity/agent/solaris_agent.sh
+/var/svc/manifest/application/cohesity_agent.xml
+[ verifying class <none> ]
+## Executing postinstall script.
+Restarting the manifest-import service...
+Starting the agent...
+ 
+Installation of <cohesity-agent> was successful.
+root@s39d0z0:/var/tmp/cohesity# ps -ef | grep cohesity
+    root 118064 117844   0 12:44:13 pts/4       0:00 grep cohesity
+    root 118057 118056   0 12:44:00 ?           0:04 /usr/local/cohesity/agent/cohesity_solaris_agent_exec --go_agent_config_file_path=/etc/solaris_agent_config --go_agent_user_script_dir_path=/usr/local/cohesity/agent/user_scripts --log_dir=/var/log/cohesity/agent --stderrthreshold=3 --max_log_size=30 --stop_logging_if_full_disk=true --go_agent_user_script_log_dir_path=/var/log/cohesity/agent/user_script_logs
+    root 118056      1   0 12:44:00 ?           0:00 /bin/sh /usr/local/cohesity/agent/solaris_agent.sh start_via_monitor
+    root 118062 118057   0 12:44:04 ?           0:05 /usr/local/cohesity/agent/cohesity_solaris_agent_exec --go_agent_config_file_path=/etc/solaris_agent_config --go_agent_user_script_dir_path=/usr/local/cohesity/agent/user_scripts --log_dir=/var/log/cohesity/agent --stderrthreshold=3 --max_log_size=30 --stop_logging_if_full_disk=true --go_agent_user_script_log_dir_path=/var/log/cohesity/agent/user_script_logs -self_monitoring_child=true
+root@s39d0z0:/var/tmp/cohesity#
+ 
+	1) Verify Cohesity agent status once installed. “/usr/local/cohesity/agent” is the path and “solaris_agent.sh” is the agent script name.
+	 
+root@s39d0z0:/usr/local/cohesity/agent# ./solaris_agent.sh status
+Cohesity Solaris agent is running. Process ids: 118057 118076
+root@s39d0z0:/usr/local/cohesity/agent# ./solaris_agent.sh stop
+Stopping monitoring process...
+Stopping Cohesity Solaris agent...
+root@s39d0z0:/usr/local/cohesity/agent# ./solaris_agent.sh status
+Cohesity Solaris agent is not running.
+root@s39d0z0:/usr/local/cohesity/agent# ./solaris_agent.sh start
+root@s39d0z0:/usr/local/cohesity/agent# ./solaris_agent.sh status
+Cohesity Solaris agent is running. Process ids: 118127
+root@s39d0z0:/usr/local/cohesity/agent#
+root@s39d0z0:/var/tmp/cohesity# ps -ef | grep -i cohesity
+    root 118126      1   0   Apr 10 ?           0:00 /bin/sh /usr/local/cohesity/agent/solaris_agent.sh start_via_monitor
+    root  82800  80960   0 20:47:12 pts/4       0:00 grep -i cohesity
+    root  82798  81728   0 20:46:56 ?           0:05 /usr/local/cohesity/agent/cohesity_solaris_agent_exec --go_agent_config_file_path=/etc/solaris_agent_config --go_agent_user_script_dir_path=/usr/local/cohesity/agent/user_scripts --log_dir=/var/log/cohesity/agent --stderrthreshold=3 --max_log_size=30 --stop_logging_if_full_disk=true --go_agent_user_script_log_dir_path=/var/log/cohesity/agent/user_script_logs -self_monitoring_child=true
+    root  81728 118126   0 18:02:19 ?           2:42 /usr/local/cohesity/agent/cohesity_solaris_agent_exec --go_agent_config_file_path=/etc/solaris_agent_config --go_agent_user_script_dir_path=/usr/local/cohesity/agent/user_scripts --log_dir=/var/log/cohesity/agent --stderrthreshold=3 --max_log_size=30 --stop_logging_if_full_disk=true --go_agent_user_script_log_dir_path=/var/log/cohesity/agent/user_script_logs
+root@s39d0z0:/var/tmp/cohesity#
+                                                            
+ ============================================================================================
+To take snapshot:
+Scj3-node2-ilom
+iLOM Administration --> Maintenance --> Snapshot --> Run 
+
+
+
+===========================================================================================
+
+mount -F nfs 11.48.115.247:/export/solarisosimages /solarisosimages
+
+====================================================================================================
+àLogin Guest domain and run below commands for Solaris patching prework.
+ 
+Script location: /solarisosimages/solaris_scripts/
+Script file: prepatch_ldom_bkp
+ 
+#mkdir /solarisosimages
+#mount -F nfs 11.48.115.247:/export/solarisosimages /solarisosimages
+#/solarisosimages/solaris_scripts/prepatch_ldom_bkp
+ 
+Backup file location: /solarisosimages/solaris_bkp_2023
+ 
+àLogin Control domain and run below commands for Solaris patching prework.
+ 
+Script location: /solarisosimages/solaris_scripts/
+Script file: prepatch_pdom_bkp
+ 
+#mkdir /solarisosimages
+#mount -F nfs 11.48.115.247:/export/solarisosimages /solarisosimages
+#/solarisosimages/solaris_scripts/prepatch_pdom_bkp
+ 
+Backup file location: /solarisosimages/solaris_bkp_2023
+ 
+àLogin Exadata servers and run below commands for Exadata patching prework.
+ 
+Script location: /solarisosimages/solaris_scripts/
+Script file: prepatch_exadata_bkp
+ 
+#mkdir /solarisosimages
+#mount -t nfs 11.48.115.247:/export/solarisosimages /solarisosimages
+#/solarisosimages/solaris_scripts/prepatch_exadata_bkp
+ 
+Backup file location: /solarisosimages/solaris_bkp_2023
+ 
+======================================================================
+Backup folder:
+
+92.168.28.1:/export/ssc/qfsdp
+                      10.2T  1.41T      8.84T    14%    /QFSDP
+
+#cd /; mkdir QFSDP
+#mount -F nfs 192.168.30.128:/export/qfsdp1 /u01/patches/QFSDP
+=======================================================================
+Solaris:
+
+0 6 * * 0 /usr/bin/find /var/explorer/output -type f -name 'explor*gz' -mtime +90 -exec rm {} \; > /dev/null 2>&1
+
+=============================================================================
+Solaris Monitoring graphs: privileged account and password
+
+https://hostname:6787
+
+https://scj5db02z2:6787/
+
+
+
+====================================================================================
+AHF /TAF /TACFCTL software installation:
+
+Document 2550798.1 (oracle.com)
+
+--> Unzip the AHF zip file
+#unzip AHF-LINUX_<version>.zip
+
+root@scj5db01z1:/tmp# ls -l | grep -i ahf
+-rwxrwxrwx   1 BH19192P FSG      236282056 Oct 10 13:25 AHF-SOLARIS.SPARC64_v23.9.0.zip
+-rwx------   1 root     root     240491729 Oct  3 23:56 ahf_setup
+-rw-------   1 root     root         384 Oct  3 23:56 ahf_setup.dat
+root@scj5db01z1:/tmp# ./ahf_setup -ahf_loc /opt -data_dir /u01/app/grid
+
+AHF Installer for Platform SunOS Architecture SPARC
+
+AHF Installation Log : /tmp/ahf_install_239000_78316_2023_10_10-13_31_05.log
+
+Starting Autonomous Health Framework (AHF) Installation
+
+AHF Version: 23.9.0 Build Date: 202310031940
+
+AHF is already installed at /opt/oracle.ahf
+
+Installed AHF Version: 23.2.0 Build Date: 202303080342
+
+Do you want to upgrade AHF [Y]|N : Y
+
+AHF will also be installed/upgraded on these Cluster Nodes :
+
+1. scj5db01z2
+2. scj5db01z3
+3. scj5db02z1
+4. scj5db02z2
+5. scj5db02z3
+
+The AHF Location and AHF Data Directory must exist on the above nodes
+AHF Location : /opt/oracle.ahf
+AHF Data Directory : /u01/app/oracle/oracle.ahf/data
+
+Do you want to install/upgrade AHF on Cluster Nodes ? [Y]|N : Y
+
+Upgrading /opt/oracle.ahf
+
+Shutting down AHF Services
+
+root@scj5db02z3:~# tfactl status
+
+.---------------------------------------------------------------------------------------------------.
+| Host       | Status of TFA | PID   | Port | Version    | Build ID              | Inventory Status |
++------------+---------------+-------+------+------------+-----------------------+------------------+
+| scj5db02z3 | RUNNING       | 90389 | 5000 | 23.9.0.0.0 | 230900020231003194058 | COMPLETE         |
+| scj5db01z1 | RUNNING       | 84157 | 5000 | 23.9.0.0.0 | 230900020231003194058 | RUNNING          |
+| scj5db01z2 | RUNNING       | 89356 | 5000 | 23.9.0.0.0 | 230900020231003194058 | COMPLETE         |
+| scj5db01z3 | RUNNING       |  4103 | 5000 | 23.9.0.0.0 | 230900020231003194058 | COMPLETE         |
+| scj5db02z1 | RUNNING       | 41783 | 5000 | 23.9.0.0.0 | 230900020231003194058 | COMPLETE         |
+| scj5db02z2 | RUNNING       |  5629 | 5000 | 23.9.0.0.0 | 230900020231003194058 | COMPLETE         |
+'------------+---------------+-------+------+------------+-----------------------+------------------'
+root@scj5db02z3:~#
+
+
+=========================================================================
+Super cluster servers alias:
+
+scl2db01
+scl2db02
+scj3dbadm01/scj3client01 
+scj3dbadm02/scj3client02
+scj4db01
+scj4db02
+scj5db01
+scj5db02
+scr2dbadm01/scr2client01
+scr2dbadm02/scr2client02
+scr3db01/scr3client01
+scr3db02/scr3client02 
+
+----------------------------------------------------------------------------------------------------------------------------------------------
+To find large files in Solaris servers:
+#find /var -xdev -type f -size +1000000M -exec ls -lah {} \; | sort -nk 5
+#find / -xdev -type f -size +1000000M -exec ls -lah {} \; | sort -nk 
+===============================================================================
+IOPS:
+
+[root@scj5cel06 ~]# pwd
+/root
+[root@scj5cel06 ~]# cd $CELLTRACE
+[root@scj5cel06 trace]# pwd
+/opt/oracle/cell21.2.23.0.0_LINUX.X64_230422/log/diag/asm/cell/scj5cel06/trace
+[root@scj5cel06 trace]# ls -al alert.log
+-rw-rw---- 1 root celltrace 1432367 Jan  9 12:46 alert.log
+[root@scj5cel06 trace]# tail -f alert.log
+[root@scj5cel06 trace]# tail -f alert.log
+2024-01-09T00:50:26.204964-05:00
+Finished scrubbing CellDisk:CD_10_scj5cel06, scrubbed blocks (16KB):479976448, found bad blocks:0
+2024-01-09T10:09:52.188015-05:00
+Finished scrubbing CellDisk:CD_01_scj5cel06, scrubbed blocks (16KB):477761536, found bad blocks:0
+2024-01-09T11:37:06.851881-05:00
+Finished scrubbing CellDisk:CD_07_scj5cel06, scrubbed blocks (16KB):479976448, found bad blocks:0
+=================================================================================
+
+SJ01 iLOM is not connect issue:
+
+#ipadm delete-addr net8/v4
+#ipadm delete-ip net8
+#ipadm delete-ip sp-host0
+#ilomconfig enable interconnect --ipaddress=169.254.182.76 --hostipaddress=169.254.182.77 --netmask=255.255.255.0
+#ilomconfig list interconnect
+====================================================================================================
+
+3par8 LUNs removal :
+
+
+
+
+===================================================================================================================
+Change root password for iLOM:
+
+--> To reset ilom, it may take time to open ilom console
+
+root@sj08d0z0:~# ipmitool bmc reset cold
+Sent cold reset command to MC
+root@sj08d0z0:~#
+
+
+[sj08d0z0:/root] # ipmitool sunoem cli 'set /SP/users/root password=changeme' changeme
+Connected. Use ^D to exit.
+-> set /SP/users/root password=changeme
+Changing password for user /SP/users/root...
+Enter new password again: ********
+New password was successfully set for user /SP/users/root
+ 
+-> Session closed
+Disconnected
+
+or
+
+[sj08d0z0:/root] # /usr/sbin/ipmitool user set password 0x02 changeme
+Set User Password command successful (user 2)
+[sj08d0z0:/root] #
+=================================================================
+Database hang in Cell node:
+
+#cellsrv running and all griddisks are online 
+#cellcli -e list griddisk attributes name,status,asmmodestatus,asmdeactivationoutcome
+#cellcli -e alter cell startup services all
+#cellcli -e list griddisk attributes name,status,asmmodestatus,asmdeactivationoutcome
+
+
+#cellcli -e list database
+#cellcli -e list physicaldisk
+#cellcli -e list griddisk attributes name,status,asmmodestatus
+
+572  2022-03-24.23:09:29 cellcli -e "list cell detail" > /var/tmp/xsj5cel09/cell_xsj5cel09.txt
+  573  2022-03-24.23:09:47 cellcli -e "list lun detail" >  /var/tmp/xsj5cel09/lun_xsj5cel09.txt
+  574  2022-03-24.23:10:05 cellcli -e "list physicaldisk detail" > /var/tmp/xsj5cel09/physicaldisk_xsj5cel09.txt
+  575  2022-03-24.23:10:23 cellcli -e "list celldisk detail" > /var/tmp/xsj5cel09/celldisk_xsj5cel09.txt
+  576  2022-03-24.23:10:39 cellcli -e "list griddisk detail " > /var/tmp/xsj5cel09/griddisk.txt
+  577  2022-03-24.23:10:57 cellcli -e "list griddisk attributes ALL" > /var/tmp/xsj5cel09/griddisk_attributes_xsj5cel09.txt
+  578  2022-03-24.23:11:18 cellcli -e "list flashcache detail" > /var/tmp/xsj5cel09/flashcache_xsj5cel09.txt
+  579  2022-03-24.23:11:40 cellcli -e "list flashcachecontent detail" > /var/tmp/xsj5cel09/flashcachecontent_xsj5cel09.txt
+  580  2022-03-24.23:12:16 cellcli -e "list flashlog detail" > /var/tmp/xsj5cel09/flashlog_xsj5cel09.txt
+  581  2022-03-24.23:12:39 cellcli -e list griddisk attributes name,status,asmmodestatus > /var/tmp/xsj5cel09/asmmodestatus_xsj5cel09.txt
+
+
+# cellcli -e list physicaldisk 8:11 detail
+         name:                   8:11
+         deviceId:               35
+         deviceName:             /dev/sdl
+         diskType:               HardDisk
+         enclosureDeviceId:      8
+         errOtherCount:          0
+         luns:                   0_11
+         makeModel:              "HGST    H7280A520SUN8.0T"
+         physicalFirmware:       PD51
+         physicalInsertTime:     2018-01-03T01:02:36-05:00
+         physicalInterface:      sas
+         physicalSerial:         PGA0UV
+         physicalSize:           7.1536639072000980377197265625T
+         slotNumber:             11
+         status:                 normal
+[root@xsj5cel09 ~]#
+
+========================================================================
+
+Nagios Alerts:
+
+#systemctl restart ncpa_listener
+
+]# sudo -U b0_emn1 -l
+Matching Defaults entries for b0_emn1 on this host:
+    group_plugin=/opt/quest/lib64/libsudo_vas.so, log_input, log_output, syslog=auth, !requiretty, !log_input, !log_output
+
+User b0_emn1 may run the following commands on this host:
+    (root) NOPASSWD: /usr/bin/su - nagios, (root) /bin/su - nagios
+
+#nmap -Pn -p 5693 hostname
+
+===============================================================================
+Nagios:
+
+#/opt/quest/bin/vastool -u b0_unixops join -f federated.fds ma000xsfed01.federated.fds ma000xsfed02.federated.fds
+#/opt/quest/bin/vastool flush
+#/opt/quest/bin/vgptool apply
+
+#/opt/quest/bin/vastool user checkaccess bh19192p
+
+
+====================================================================
+
+Patching:
+
+/  "root" filesystem cleanup
+
+[root@dml4db02 oracle.ExaWatcher]# pwd
+/opt/oracle.ExaWatcher
+mkdir -p /qfsdp/EXAWATCHER/dml4db02-04272022
+cp -r archive /qfsdp/EXAWATCHER/dml4db02-04272022
+cd archive
+du -sh *| sort -rh | head
+1.1G    Ps.ExaWatcher
+821M    Top.ExaWatcher
+566M    TopPid.ExaWatcher
+514M    Netstat.ExaWatcher
+488M    Lsof.ExaWatcher
+
+cd Ps.ExaWatcher
+rm -Rf *.bz2
+cd ../Top.ExaWatcher
+rm -Rf *.bz2
+cd ../TopPid.ExaWatcher
+rm -Rf *.bz2
+
+[root@dml4db02 Netstat.ExaWatcher]# df -hP /
+Filesystem                    Size  Used Avail Use% Mounted on
+/dev/mapper/VGExaDb-LVDbSys1   30G   21G  7.8G  73% /
+\=============================================================================
+
+Oswatcher / Exawatcher output:
+
+
+cd /opt/oracle.ExaWatcher; ./GetExaWatcherResults.sh --from 10/19/2023_01:00:00 --to 10/19/2023_02:00:00
+
+cd /opt/oracle.ExaWatcher; ./GetExaWatcherResults.sh --from 03/19/2024_16:23:00 --to 03/19/2024_18:23:00
+
+==========================================================
+
+ps -eo pcpu,pid,user,args | sort -k 1 -r | head -10
+
+
+
+==========================================================
+
+root@sj01p0d1z0:~# swap -l
+swapfile                 dev            swaplo      blocks        free encrypted
+/dev/zvol/dsk/rpool/swap 303,5               0    35651584    26564560       yes
+
+root@sj01p0d1z0:~# vmstat -p
+     memory           page          executable      anonymous      filesystem
+   swap  free  re  mf  fr  de  sr  epi  epo  epf  api  apo  apf  fpi  fpo  fpf
+ 807426952 730440456 6174 12408 0 0 0 0   0    0   99    0    0  382    0    0
+
+Top:
+
+last pid: 12924;  load avg:  13.8,  13.8,  15.0;  up 226+20:57:49                                                                    21:50:56
+5580 processes: 5522 sleeping, 28 zombie, 19 stopped, 11 on cpu
+CPU states: 98.3% idle,  0.5% user,  1.3% kernel,  0.0% stolen,  0.0% swap
+Kernel: 87384 ctxsw, 32062 trap, 50322 intr, 149200 syscall, 64 fork, 13389 flt, 24 pgin
+Memory: 1832G phys mem, 1101G free mem, 17G total swap, 13G free swap
+
+=============================================================
+
+Nix Inventory URL: 
+Macy's *NIX Inventory
+
+Root password:
+
+Kj..aomS1!
+Welcome1
+
+
+Main sheets : solaris_non_engineered_path  & Eng System patching Schedule Year 2022
+Reference Sheets : Latest inventory-Pavel & Eng System Patching schedule Year 2022 patching-OCT062021 (003)
+ 
+Completed servers :  Sj01 , Sj02, Sj03 , Sj04, Sj06, SJ07 ,SJ08, SJ09, Sj10.
+ 
+Recording link :  https://macysinc-my.sharepoint.com/:v:/r/personal/balakrishna_tumati_macys_com/Documents/Recordings/Solaris%20Nix%20inventory%20update-20220811_092222-Meeting%20Recording.mp4?csf=1&web=1&e=vhxGMe
+ 
+Number of cores
+ 
+# echo "`kstat -m cpu_info|grep -w core_id|uniq|wc -l` core(s) "
+ 
+To get Memory details
+ 
+# Top
+# Prtdiag -v  
+
+Model:
+
+#psrinfo -pv
+ 
+Application Name
+ 
+# zonecfg -z s86d0z1 info
+EX: 
+ 
+
+
+
+
+PeopleSoft : 
+manojkumar.fofandi@macys.com
+
+JBOSS MAGIC PFL:
+MstTIBCOOps@macys.com
+
+One HR:
+barry.sherrick@macys.com
+
+Middleware TIBCO EMS server for JC PROD Environment-EMS, Hawk
+MSTTIBCOADMIN@macys.com
+
+
+
+
+=====================================================================================
+
+
+pkg update -nv --accept entire@11.4-11.4.44.0.1.113.4 > /var/tmp/pkg-update1.out 2>&1
+
+shutdown -i6 -g0 -y
+
+ svcadm restart svc:/network/smtp:sendmail
+Svcs -a | grep - sendmail
+
+
+=====================================================================================
+
+To check memory/Swap utilisations:
+
+prstat -a
+=============================================================================
+root@scj4db01:/etc/mail# grep DS sendmail.cf 
+DSappmail.federated.fds
+# Return-Receipt-To: header implies DSN request
+# DHParameters (only required if DSA/DH is used)
+
+
+root@scj4db01:/etc/mail# svcs -a | grep mail
+online         18:01:43        svc:/network/sendmail-client:default
+online         18:43:03        svc:/network/smtp:sendmail
+
+#svcadm restart svc:/network/sendmail-client:default
+#svcadm restart svc:/network/smtp:sendmail
+#mailx -v -s "test subject" venkatesh.veerabattini@macys.com  < /dev/null
+====================================================================================
+User access issue:
+
+cat /etc/opt/quest/vas/users.allow
+
+root@s92d2z0:/etc/opt/quest/vas# pwd
+/etc/opt/quest/vas
+root@s92d2z0: #cd /etc/opt/quest/vas; cat users.allow
+UxRG_s92d1z0
+UxAG_mst_ifs_mon
+svc-arxview
+UxAG_sysadmin_Solaris
+MTECH-CyberArk-ServiceAccounts
+
+Sudo file :
+
+cat /etc/opt/quest/qpm4u/policy/sudoers
+
+To rejoin the server into AD domain, take password from CyberArk tool
+
+#/opt/quest/bin/vastool -u b0_unixops join -f federated.fds ma000xsfed01.federated.fds ma000xsfed02.federated.fds
+#/opt/quest/bin/vastool flush
+#/opt/quest/bin/vgptool apply
+
+#/opt/quest/bin/vastool user checkaccess bh19192p
+====================================================================================
+
+As per recommendation I had disable sstored at zones scr4db02z1.It’ll not impact anything and stopped the generation of unwanted core.sstored files at root.MOS engineer also recommended to do next level patching which is already planned in our patching schedule.
+--> take latest core file back up on any folder /tmp or /var
+
+-rw-------   1 root     root     208976495 Jan 10 01:19 core.sstored.1673331556
+-rw-------   1 root     root     195015207 Jan 10 03:19 core.sstored.1673338756
+
+
+#svcadm disable svc:/system/sstore:default
+root@scr4db02z1:~# svcs -a|grep svc:/system/sstore:default
+disabled       21:35:40        svc:/system/sstore:default
+
+======================================================================================
+
+
+====================================================================================
+Controlm agent is not running
+
+cd /appls/controlm/ctm/scripts;./start-ag
+./start-ag
+
+==============================================================================================
+
+Cache clear:
+
+/proc# echo ::memstat | mdb -k
+
+#sync ; echo 3 > /proc/sys/vm/drop_cache
+
+=====================================================================================
+
+
+show /HOST
+
+ /HOST
+    Targets:
+        bootmode
+        console
+        diag
+        domain
+        tpm
+        verified_boot
+
+    Properties:
+        alert_forwarding = disabled
+        autorestart = reset
+        autorunonerror = poweroff
+        bootfailrecovery = poweroff
+        bootrestart = none
+        boottimeout = 0
+        gm_version = GM 1.6.15 2019/01/25 12:36
+        hostconfig_version = Hostconfig 1.6.15 2019/01/25 12:22
+        hw_bti_mitigation = default (enabled)
+        hypervisor_version = Hypervisor 1.15.17 2019/01/25 12:02
+        ioreconfigure = add_only
+        keyswitch_state = Normal
+        macaddress = 00:10:e0:35:16:00
+        maxbootfail = 3
+        obp_version = OpenBoot 4.38.17 2019/01/25 08:22
+        post_version = POST 5.3.15 2019/01/25 12:07
+        send_break_action = (Cannot show property)
+        state_capture_mode = default
+        state_capture_on_error = enabled
+        state_capture_status = enabled
+        status = Solaris running
+        status_detail = 20220723 03:27:55: Host status updated
+        sysfw_version = Sun System Firmware 9.6.25 2019/01/25 14:16
+
+    Commands:
+        cd
+        set
+        show
+
+-> start /SP/faultmgmt/shell
+Are you sure you want to start /SP/faultmgmt/shell (y/n)? y
+ 
+faultmgmtsp> fmadm faulty
+No faults found
+faultmgmtsp>
+
+====================================================================
+
+find . -type f -mtime +30 -exec ls -ld {} \;  | grep -v gz | wc -l
+
+
+====================================================================
+Exachk  Resolution
+ 
+Finally Exachk collection completed on dmd1 server and uploaded in the oracle case. If you encountered below issues on any Exadata server please use the below workaround.
+ 
+Error :
+ 
+Traceback (most recent call last):
+File "/opt/oracle.ahf/python/lib/python3.10/multiprocessing/process.py", line 314, in _bootstrap
+self.run()
+File "/opt/oracle.ahf/python/lib/python3.10/multiprocessing/process.py", line 108, in run
+self._target(*self._args, **self._kwargs)
+File "/ade/b/3181994098/oracle/tfa/src/orachk_py/src/lib/discover_env.py", line 24123, in _remote_copy_pybuild
+File "/ade/b/3181994098/oracle/tfa/src/orachk_py/src/lib/utils.py", line 3113, in native_rcopy_pybuild
+File "/opt/oracle.ahf/python/lib/python3.10/posixpath.py", line 142, in basename
+ 
+Or 
+ 
+python3.9: error while loading shared libraries: libpython3.9.so.1.0: cannot open shared object file: No such file or directory
+ 
+Please use the below Workarund.
+ 
+ 
+Uninstall and reinstall the latest version of AHF.
+ 
+	
+	
+	Can you try to reinstall AHF
+	
+	1. Uninstall using the below command
+	
+	# ahfctl uninstall 
+	
+	2. Then run a local AHF setup
+	
+	# ./ahf_setup 
+ 
+If it is single node 
+ 
+	Hi,
+	
+	Can you try to reinstall AHF on this node dmd1db02
+	
+	1. Uninstall using the below command
+	
+	# ahfctl uninstall -local
+	
+	2. Then run a local AHF setup
+	
+	# ./ahf_setup -local
+ 
+Latest package I downloaded to my home folder 
+ 
+Dmd1db01:/home/bh18453p
+========================================================================================
+
+Oracle SR / SN Incident/PRB ticket – tracking in confluence for 2023 ( High priority )
+https://confluence.federated.fds/pages/viewpage.action?pageId=268979304
+ 
+Open items:
+IB switches – access update
+Solaris root password not working – Maurice from CyberArk 
+ 
+Confluence patching page up to date prior to Brian overview
+Exadata: https://confluence.federated.fds/display/~B004704/Oracle+Exadata+servers+patching+schedule+-+2023
+SuperCluster: https://confluence.federated.fds/display/~B004704/Engineering+Solaris+systems+patching+schedule+-+2023
+Non Engineering Solaris: https://confluence.federated.fds/display/~B004704/Non-engineering+Solaris+systems+patching+schedule+-+2023	
+Executive Dashboard - Exadata/Solaris systems patching - C&O Solaris/Exadata Home - Macy's Confluence (federated.fds)
+===========================================================
+Single usermode and reset password
+
+login as: root
+Keyboard-interactive authentication prompts from server:
+| Password:
+End of keyboard-interactive prompts from server
+
+Oracle(R) Integrated Lights Out Manager
+
+Version 5.1.0.1 r147963
+
+Copyright (c) 2022, Oracle and/or its affiliates. All rights reserved.
+
+lWarning: HTTPS certificate is set to factory default.
+
+Hostname: sj01p0-ilom (Active SP)
+
+-> s
+Invalid command 's' - type help for a list of commands.
+
+-> ls
+
+ /
+    Targets:
+        HOST0
+        HOST1
+        Servers
+        System
+        SP
+
+    Properties:
+
+    Commands:
+        cd
+        show
+
+-> set /HOST1/bootmode script="setenv auto-boot? false"
+Set 'script' to 'setenv auto-boot? false'
+
+-> set /HOST1 send_break_action=break
+Set 'send_break_action' to 'break'
+
+->
+-> ls
+
+ /
+    Targets:
+        HOST0
+        HOST1
+        Servers
+        System
+        SP
+
+    Properties:
+
+    Commands:
+        cd
+        show
+
+-> start /HOST1/console
+Are you sure you want to start /HOST1/console (y/n)? y
+
+Serial console started.  To stop, type #.
+
+c)ontinue, s)ync, r)eset? r
+Resetting...
+NOTICE: Entering OpenBoot.
+NOTICE: Fetching Guest MD.
+NOTICE: Starting slave cpus.
+NOTICE: Initializing LDCs.
+ChassisSerialNumber AK00335830
+NOTICE: Probing PCI devices.
+NOTICE: Finished PCI probing.
+NOTICE: Probing USB devices.
+NOTICE: Finished USB probing.
+
+SPARC M7-8, No Keyboard
+Copyright (c) 1998, 2022, Oracle and/or its affiliates. All rights reserved.
+OpenBoot 4.43.9, 64.0000 GB memory installed, Serial #105352265.
+Ethernet address 0:10:e0:47:8c:55, Host ID: 86478c49.
+
+
+
+{400} ok boot -L
+Boot device: /pci@315/pci@1/nvme@0/disk@1  File and args: -L
+Boot environments:
+
+1 : ann_test_be
+2 : solaris-3
+3 : solaris-4
+4 : solaris-5
+5 : 11.4.44.113.4
+6 : 11.4.52.132.2
+Select boot environment: 5
+SunOS Release 5.11 Version 11.4.44.113.4 64-bit
+Copyright (c) 1983, 2021, Oracle and/or its affiliates.
+WARNING: drvconf_addto_par_spec: no major number for sf
+WARNING: svccfg apply /etc/svc/profile/node/migrated_etc_svc_profile_site_profile_90:E2:BA:AC:30:84.UUqlYw.xml failed
+
+============================================
+
+Memory disable for fault memory:
+
+-> show DIMM_59
+ 
+/System/Memory/DIMMs/DIMM_59
+    Targets:
+ 
+    Properties:
+        health = Service Required
+        health_details = fault.memory.dimm-page-retires-excessive fault.memory.dimm-page-retires-excessive Type 'show /System/Open_Problems' for details.
+        requested_state = Enabled
+        part_number = 7014672,HMT31GR7BFR4A-H9
+        serial_number = 00AD0111410610039E
+        location = PM1/CMP1/BOB2/CH1/D1 (Processor Module 1 CMP 1 Memory Branch 2 Memory Channel 1 DIMM 1)
+        manufacturer = Hynix Semiconductor Inc.
+        memory_size = 8 GB
+
+
+-> set /SYS/PM1/CMP1/BOB2/CH1/D1 component_state=Disabled
+Set 'component_state' to 'Disabled'
+
+-> pwd
+Current default target: /SYS/PM1/CMP1/BOB2/CH1/D1
+
+-> ls
+
+ /SYS/PM1/CMP1/BOB2/CH1/D1
+    Targets:
+        SERVICE
+        T_AMB
+
+    Properties:
+        type = DIMM
+        ipmi_name = P1C1/B2/C1/D1
+        component_state = Disabled
+        fru_name = 8192MB DDR3 SDRAM DIMM
+        fru_manufacturer = Hynix Semiconductor Inc.
+        fru_part_number = 7014672,HMT31GR7BFR4A-H9
+        fru_rev_level = 02
+        fru_serial_number = 00AD0111410610039E
+        fault_state = Faulted
+        clear_fault_action = (none)
+
+    Commands:
+        cd
+        set
+        show
+
+-> stop /SYS
+Are you sure you want to stop /SYS (y/n)? y
+Stopping /SYS
+-> start /SYS
+Are you sure you want to start /SYS (y/n)? Y
+
+=======================================================================================================
+Steps to install Cohesity in Solaris servers: 
+ 
+	1) Cohesity package is available in Solaris s39d0z0 and try to scp to required Solaris server.
+	 
+root@s39d0z0:/var/tmp/cohesity# pwd
+/var/tmp/cohesity
+root@s39d0z0:/var/tmp/cohesity# ls -l | grep -i cohesity
+-rwxrwxrwx   1 BH18353P FSG      85454848 Apr  7 14:20 cohesity_agent_6.6.0d_u5_solaris
+root@s39d0z0:/var/tmp/cohesity# scp cohesity_agent_6.6.0d_u5_solaris scj2t3d1z2:/var/tmp
+ 
+	1) Try to install Cohesity software with pkgadd command (Example : s39d0z0)
+ 
+# pkgadd -d cohesity_agent_6.6.0d_u5_solaris
+ 
+The following packages are available:
+  1  cohesity-agent     Cohesity Agent
+                        (sparc) 0.1
+ 
+Select package(s) you wish to process (or 'all' to process
+all packages). (default: all) [?,??,q]:
+ 
+Processing package instance <cohesity-agent> from </var/tmp/cohesity/cohesity_agent_6.6.0d_u5_solaris>
+ 
+Cohesity Agent(sparc) 0.1
+© Cohesity, Inc. 2018.  All rights reserved.
+## Executing checkinstall script.
+Using </> as the package base directory.
+## Processing package information.
+## Processing system information.
+   8 package pathnames are already properly installed.
+## Verifying disk space requirements.
+## Checking for conflicts with packages already installed.
+ 
+The following files are already installed on the system and are being
+used by another package:
+* /var/log <attribute change only>
+ 
+* - conflict with a file which does not belong to any package.
+ 
+Do you want to install these conflicting files [y,n,?,q] y
+## Checking for setuid/setgid programs.
+ 
+This package contains scripts which will be executed with super-user
+permission during the process of installing this package.
+ 
+Do you want to continue with the installation of <cohesity-agent> [y,n,?] y
+ 
+Installing Cohesity Agent as <cohesity-agent>
+ 
+## Executing preinstall script.
+## Installing part 1 of 1.
+/lib/svc/method/cohesity-agent
+/usr/local/cohesity/agent/cohesity_solaris_agent_exec
+/usr/local/cohesity/agent/common.sh
+/usr/local/cohesity/agent/env.sh
+/usr/local/cohesity/agent/libgcc_s.so.1.gz
+/usr/local/cohesity/agent/libgo.so.13.gz
+/usr/local/cohesity/agent/solaris_agent.sh
+/var/svc/manifest/application/cohesity_agent.xml
+[ verifying class <none> ]
+## Executing postinstall script.
+Restarting the manifest-import service...
+Starting the agent...
+ 
+Installation of <cohesity-agent> was successful.
+root@s39d0z0:/var/tmp/cohesity# ps -ef | grep cohesity
+    root 118064 117844   0 12:44:13 pts/4       0:00 grep cohesity
+    root 118057 118056   0 12:44:00 ?           0:04 /usr/local/cohesity/agent/cohesity_solaris_agent_exec --go_agent_config_file_path=/etc/solaris_agent_config --go_agent_user_script_dir_path=/usr/local/cohesity/agent/user_scripts --log_dir=/var/log/cohesity/agent --stderrthreshold=3 --max_log_size=30 --stop_logging_if_full_disk=true --go_agent_user_script_log_dir_path=/var/log/cohesity/agent/user_script_logs
+    root 118056      1   0 12:44:00 ?           0:00 /bin/sh /usr/local/cohesity/agent/solaris_agent.sh start_via_monitor
+    root 118062 118057   0 12:44:04 ?           0:05 /usr/local/cohesity/agent/cohesity_solaris_agent_exec --go_agent_config_file_path=/etc/solaris_agent_config --go_agent_user_script_dir_path=/usr/local/cohesity/agent/user_scripts --log_dir=/var/log/cohesity/agent --stderrthreshold=3 --max_log_size=30 --stop_logging_if_full_disk=true --go_agent_user_script_log_dir_path=/var/log/cohesity/agent/user_script_logs -self_monitoring_child=true
+root@s39d0z0:/var/tmp/cohesity#
+ 
+	1) Verify Cohesity agent status once installed. “/usr/local/cohesity/agent” is the path and “solaris_agent.sh” is the agent script name.
+	 
+root@s39d0z0:/usr/local/cohesity/agent# ./solaris_agent.sh status
+Cohesity Solaris agent is running. Process ids: 118057 118076
+root@s39d0z0:/usr/local/cohesity/agent# ./solaris_agent.sh stop
+Stopping monitoring process...
+Stopping Cohesity Solaris agent...
+root@s39d0z0:/usr/local/cohesity/agent# ./solaris_agent.sh status
+Cohesity Solaris agent is not running.
+root@s39d0z0:/usr/local/cohesity/agent# ./solaris_agent.sh start
+root@s39d0z0:/usr/local/cohesity/agent# ./solaris_agent.sh status
+Cohesity Solaris agent is running. Process ids: 118127
+root@s39d0z0:/usr/local/cohesity/agent#
+root@s39d0z0:/var/tmp/cohesity# ps -ef | grep -i cohesity
+    root 118126      1   0   Apr 10 ?           0:00 /bin/sh /usr/local/cohesity/agent/solaris_agent.sh start_via_monitor
+    root  82800  80960   0 20:47:12 pts/4       0:00 grep -i cohesity
+    root  82798  81728   0 20:46:56 ?           0:05 /usr/local/cohesity/agent/cohesity_solaris_agent_exec --go_agent_config_file_path=/etc/solaris_agent_config --go_agent_user_script_dir_path=/usr/local/cohesity/agent/user_scripts --log_dir=/var/log/cohesity/agent --stderrthreshold=3 --max_log_size=30 --stop_logging_if_full_disk=true --go_agent_user_script_log_dir_path=/var/log/cohesity/agent/user_script_logs -self_monitoring_child=true
+    root  81728 118126   0 18:02:19 ?           2:42 /usr/local/cohesity/agent/cohesity_solaris_agent_exec --go_agent_config_file_path=/etc/solaris_agent_config --go_agent_user_script_dir_path=/usr/local/cohesity/agent/user_scripts --log_dir=/var/log/cohesity/agent --stderrthreshold=3 --max_log_size=30 --stop_logging_if_full_disk=true --go_agent_user_script_log_dir_path=/var/log/cohesity/agent/user_script_logs
+root@s39d0z0:/var/tmp/cohesity#
+                                                            
+ ============================================================================================
+To take snapshot:
+Scj3-node2-ilom
+iLOM Administration --> Maintenance --> Snapshot --> Run 
+
+
+
+===========================================================================================
+
+mount -F nfs 11.48.115.247:/export/solarisosimages /solarisosimages
+
+====================================================================================================
+àLogin Guest domain and run below commands for Solaris patching prework.
+ 
+Script location: /solarisosimages/solaris_scripts/
+Script file: prepatch_ldom_bkp
+ 
+#mkdir /solarisosimages
+#mount -F nfs 11.48.115.247:/export/solarisosimages /solarisosimages
+#/solarisosimages/solaris_scripts/prepatch_ldom_bkp
+ 
+Backup file location: /solarisosimages/solaris_bkp_2023
+ 
+àLogin Control domain and run below commands for Solaris patching prework.
+ 
+Script location: /solarisosimages/solaris_scripts/
+Script file: prepatch_pdom_bkp
+ 
+#mkdir /solarisosimages
+#mount -F nfs 11.48.115.247:/export/solarisosimages /solarisosimages
+#/solarisosimages/solaris_scripts/prepatch_pdom_bkp
+ 
+Backup file location: /solarisosimages/solaris_bkp_2023
+ 
+àLogin Exadata servers and run below commands for Exadata patching prework.
+ 
+Script location: /solarisosimages/solaris_scripts/
+Script file: prepatch_exadata_bkp
+ 
+#mkdir /solarisosimages
+#mount -t nfs 11.48.115.247:/export/solarisosimages /solarisosimages
+#/solarisosimages/solaris_scripts/prepatch_exadata_bkp
+ 
+Backup file location: /solarisosimages/solaris_bkp_2023
+ 
+======================================================================
+Backup folder:
+
+92.168.28.1:/export/ssc/qfsdp
+                      10.2T  1.41T      8.84T    14%    /QFSDP
+
+#cd /; mkdir QFSDP
+#mount -F nfs 192.168.30.128:/export/qfsdp1 /u01/patches/QFSDP
+=======================================================================
+Solaris:
+
+0 6 * * 0 /usr/bin/find /var/explorer/output -type f -name 'explor*gz' -mtime +90 -exec rm {} \; > /dev/null 2>&1
+
+=============================================================================
+Solaris Monitoring graphs: privileged account and password
+
+https://hostname:6787
+
+https://scj5db02z2:6787/
+
+
+
+====================================================================================
+AHF /TAF /TACFCTL software installation:
+
+Document 2550798.1 (oracle.com)
+
+--> Unzip the AHF zip file
+#unzip AHF-LINUX_<version>.zip
+
+root@scj5db01z1:/tmp# ls -l | grep -i ahf
+-rwxrwxrwx   1 BH19192P FSG      236282056 Oct 10 13:25 AHF-SOLARIS.SPARC64_v23.9.0.zip
+-rwx------   1 root     root     240491729 Oct  3 23:56 ahf_setup
+-rw-------   1 root     root         384 Oct  3 23:56 ahf_setup.dat
+root@scj5db01z1:/tmp# ./ahf_setup -ahf_loc /opt -data_dir /u01/app/grid
+
+AHF Installer for Platform SunOS Architecture SPARC
+
+AHF Installation Log : /tmp/ahf_install_239000_78316_2023_10_10-13_31_05.log
+
+Starting Autonomous Health Framework (AHF) Installation
+
+AHF Version: 23.9.0 Build Date: 202310031940
+
+AHF is already installed at /opt/oracle.ahf
+
+Installed AHF Version: 23.2.0 Build Date: 202303080342
+
+Do you want to upgrade AHF [Y]|N : Y
+
+AHF will also be installed/upgraded on these Cluster Nodes :
+
+1. scj5db01z2
+2. scj5db01z3
+3. scj5db02z1
+4. scj5db02z2
+5. scj5db02z3
+
+The AHF Location and AHF Data Directory must exist on the above nodes
+AHF Location : /opt/oracle.ahf
+AHF Data Directory : /u01/app/oracle/oracle.ahf/data
+
+Do you want to install/upgrade AHF on Cluster Nodes ? [Y]|N : Y
+
+Upgrading /opt/oracle.ahf
+
+Shutting down AHF Services
+
+root@scj5db02z3:~# tfactl status
+
+.---------------------------------------------------------------------------------------------------.
+| Host       | Status of TFA | PID   | Port | Version    | Build ID              | Inventory Status |
++------------+---------------+-------+------+------------+-----------------------+------------------+
+| scj5db02z3 | RUNNING       | 90389 | 5000 | 23.9.0.0.0 | 230900020231003194058 | COMPLETE         |
+| scj5db01z1 | RUNNING       | 84157 | 5000 | 23.9.0.0.0 | 230900020231003194058 | RUNNING          |
+| scj5db01z2 | RUNNING       | 89356 | 5000 | 23.9.0.0.0 | 230900020231003194058 | COMPLETE         |
+| scj5db01z3 | RUNNING       |  4103 | 5000 | 23.9.0.0.0 | 230900020231003194058 | COMPLETE         |
+| scj5db02z1 | RUNNING       | 41783 | 5000 | 23.9.0.0.0 | 230900020231003194058 | COMPLETE         |
+| scj5db02z2 | RUNNING       |  5629 | 5000 | 23.9.0.0.0 | 230900020231003194058 | COMPLETE         |
+'------------+---------------+-------+------+------------+-----------------------+------------------'
+root@scj5db02z3:~#
+
+
+=========================================================================
+
+----------------------------------------------------------------------------------------------------------------------------------------------
+To find large files in Solaris servers:
+#find /var -xdev -type f -size +1000000M -exec ls -lah {} \; | sort -nk 5
+#find / -xdev -type f -size +1000000M -exec ls -lah {} \; | sort -nk 
+===============================================================================
+IOPS:
+
+[root@scj5cel06 ~]# pwd
+/root
+[root@scj5cel06 ~]# cd $CELLTRACE
+[root@scj5cel06 trace]# pwd
+/opt/oracle/cell21.2.23.0.0_LINUX.X64_230422/log/diag/asm/cell/scj5cel06/trace
+[root@scj5cel06 trace]# ls -al alert.log
+-rw-rw---- 1 root celltrace 1432367 Jan  9 12:46 alert.log
+[root@scj5cel06 trace]# tail -f alert.log
+[root@scj5cel06 trace]# tail -f alert.log
+2024-01-09T00:50:26.204964-05:00
+Finished scrubbing CellDisk:CD_10_scj5cel06, scrubbed blocks (16KB):479976448, found bad blocks:0
+2024-01-09T10:09:52.188015-05:00
+Finished scrubbing CellDisk:CD_01_scj5cel06, scrubbed blocks (16KB):477761536, found bad blocks:0
+2024-01-09T11:37:06.851881-05:00
+Finished scrubbing CellDisk:CD_07_scj5cel06, scrubbed blocks (16KB):479976448, found bad blocks:0
+=================================================================================
+
+SJ01 iLOM is not connect issue:
+
+#ipadm delete-addr net8/v4
+#ipadm delete-ip net8
+#ipadm delete-ip sp-host0
+#ilomconfig enable interconnect --ipaddress=169.254.182.76 --hostipaddress=169.254.182.77 --netmask=255.255.255.0
+#ilomconfig list interconnect
+====================================================================================================
+
+3par8 LUNs removal :
+
+
+
+
+===================================================================================================================
+Change root password for iLOM:
+
+--> To reset ilom, it may take time to open ilom console
+
+root@Server1:~# ipmitool bmc reset cold
+Sent cold reset command to MC
+root@Server1:~#
+
+
+[Server1:/root] # ipmitool sunoem cli 'set /SP/users/root password=changeme' changeme
+Connected. Use ^D to exit.
+-> set /SP/users/root password=changeme
+Changing password for user /SP/users/root...
+Enter new password again: ********
+New password was successfully set for user /SP/users/root
+ 
+-> Session closed
+Disconnected
+
+or
+
+[Server1:/root] # /usr/sbin/ipmitool user set password 0x02 changeme
+Set User Password command successful (user 2)
+[Server1:/root] #
+=================================================================
+Database hang in Cell node:
+
+#cellsrv running and all griddisks are online 
+#cellcli -e list griddisk attributes name,status,asmmodestatus,asmdeactivationoutcome
+#cellcli -e alter cell startup services all
+#cellcli -e list griddisk attributes name,status,asmmodestatus,asmdeactivationoutcome
+
+
+#cellcli -e list database
+#cellcli -e list physicaldisk
+#cellcli -e list griddisk attributes name,status,asmmodestatus
+
+572  2022-03-24.23:09:29 cellcli -e "list cell detail" > /var/tmp/xsj5cel09/cell_xsj5cel09.txt
+  573  2022-03-24.23:09:47 cellcli -e "list lun detail" >  /var/tmp/xsj5cel09/lun_xsj5cel09.txt
+  574  2022-03-24.23:10:05 cellcli -e "list physicaldisk detail" > /var/tmp/xsj5cel09/physicaldisk_xsj5cel09.txt
+  575  2022-03-24.23:10:23 cellcli -e "list celldisk detail" > /var/tmp/xsj5cel09/celldisk_xsj5cel09.txt
+  576  2022-03-24.23:10:39 cellcli -e "list griddisk detail " > /var/tmp/xsj5cel09/griddisk.txt
+  577  2022-03-24.23:10:57 cellcli -e "list griddisk attributes ALL" > /var/tmp/xsj5cel09/griddisk_attributes_xsj5cel09.txt
+  578  2022-03-24.23:11:18 cellcli -e "list flashcache detail" > /var/tmp/xsj5cel09/flashcache_xsj5cel09.txt
+  579  2022-03-24.23:11:40 cellcli -e "list flashcachecontent detail" > /var/tmp/xsj5cel09/flashcachecontent_xsj5cel09.txt
+  580  2022-03-24.23:12:16 cellcli -e "list flashlog detail" > /var/tmp/xsj5cel09/flashlog_xsj5cel09.txt
+  581  2022-03-24.23:12:39 cellcli -e list griddisk attributes name,status,asmmodestatus > /var/tmp/xsj5cel09/asmmodestatus_xsj5cel09.txt
+
+
+# cellcli -e list physicaldisk 8:11 detail
+         name:                   8:11
+         deviceId:               35
+         deviceName:             /dev/sdl
+         diskType:               HardDisk
+         enclosureDeviceId:      8
+         errOtherCount:          0
+         luns:                   0_11
+         makeModel:              "HGST    H7280A520SUN8.0T"
+         physicalFirmware:       PD51
+         physicalInsertTime:     2018-01-03T01:02:36-05:00
+         physicalInterface:      sas
+         physicalSerial:         PGA0UV
+         physicalSize:           7.1536639072000980377197265625T
+         slotNumber:             11
+         status:                 normal
+[root@xsj5cel09 ~]#
+
+========================================================================
+
+Nagios Alerts:
+
+#systemctl restart ncpa_listener
+
+]# sudo -U b0_emn1 -l
+Matching Defaults entries for b0_emn1 on this host:
+    group_plugin=/opt/quest/lib64/libsudo_vas.so, log_input, log_output, syslog=auth, !requiretty, !log_input, !log_output
+
+User b0_emn1 may run the following commands on this host:
+    (root) NOPASSWD: /usr/bin/su - nagios, (root) /bin/su - nagios
+
+#nmap -Pn -p 5693 hostname
+
+===============================================================================
+Nagios:
+
+#/opt/quest/bin/vastool -u b0_unixops join -f federated.fds ma000xsfed01.federated.fds ma000xsfed02.federated.fds
+#/opt/quest/bin/vastool flush
+#/opt/quest/bin/vgptool apply
+
+#/opt/quest/bin/vastool user checkaccess bh19192p
+
+===========================================================================================
+
+Storage - Solaris
+To check status of rpool:
+
+root@sj03d0z0:~# zpool list rpool
+NAME   SIZE  ALLOC  FREE  CAP  DEDUP  HEALTH  ALTROOT
+rpool  556G   339G  217G  61%  1.00x  ONLINE  -
+root@sj03d0z0:~#
+
+To check drives status:
+root@sj03d0z0:~# echo | format
+Searching for disks...done
+
+
+AVAILABLE DISK SELECTIONS:
+       0. c0t5000CCA07D1F6AC0d0 <HGST-H101860SFSUN600G-A990-558.91GB>  ROOTDISK
+          /scsi_vhci/disk@g5000cca07d1f6ac0
+          /dev/chassis/SYS/HDD0/disk
+       1. c0t5000CCA07D141E64d0 <HGST-H101860SFSUN600G-A990-558.91GB>  ROOTMIR
+          /scsi_vhci/disk@g5000cca07d141e64
+          /dev/chassis/SYS/HDD1/disk
+       2. c1t0d0 <MICRON-eUSB DISK-1112-1.89GB>
+          /pci@300/pci@1/pci@0/pci@2/usb@0/storage@1/disk@0,0
+          /dev/chassis/SYS/MB/EUSB_DISK/disk
+       3. c0t60002AC0000000000000073A0001E2C3d0 <3PARdata-VV-3321-300.00GB>
+          /scsi_vhci/ssd@g60002ac0000000000000073a0001e2c3
+       4. c0t60002AC0000000000000073B0001E2C3d0 <3PARdata-VV-3321-300.00GB>
+          /scsi_vhci/ssd@g60002ac0000000000000073b0001e2c3
+       5. c0t60002AC000000000000000220001E2C3d0 <3PARdata-VV-3321-100.00GB>
+          /scsi_vhci/ssd@g60002ac000000000000000220001e2c3
+
+To add extra disk  to existing rpool:
+#zpool attach rpool c1t0d0 c1t1d0
+#zpool status
+
+root@sj03d0z0:~# zpool get autoexpand rpool
+NAME   PROPERTY    VALUE  SOURCE
+rpool  autoexpand  off    default
+root@sj03d0z0:~#
+
+#zpool set autoexpand=on rpool
+NAME   PROPERTY    VALUE  SOURCE
+rpool  autoexpand  on    default
+
+To remove existing disk from zpool.
+
+#zpool split rpool rpool_old c1t0d0
+
+To save to kernel to save permanently.
+
+#bootadm install-bootloader -P rpool
+
+To delete zpool:
+#zpool destroy pool1
+
+To create filesystem under pool
+#zfs create pool1/fs1
+#zfs create pool1/fs2
+
+To check the filesystem information :
+
+#zfs get mountpoint pool1/fs1
+
+To set mount name to pool1/fs1
+#zfs set mountpoint=/eng1 pool1/fs1
+#zfs set mountpoint=/hr pool1/fs2
+
+To set 400MB space to eng1 filesystem
+#zfs set reservation=400m pool1/fs1
+
+To get snapshot list:
+#zfs list -t snapshot
+
+
+
+
+=====================================================================
+Decommission:
+Sudo check for bulk servers:
+
+for x in $(cat /tmp/decom_vv); do echo "....$x...."; cat /etc/sudoers | grep -i $x; done
+
+for x in $(cat /tmp/actionsite); do echo "....$x...."; scp /tmp/actionsite.afxm  $x:/etc/opt/BESClient; done
+
+
+for x in $(cat /tmp/decom_vv); do echo "....$x...."; cat /etc/sudoers | grep -i $x; done
+
+Kill multiple processes in the servers
+
+for x in $(cat /tmp/ps_vv); do kill -9 $x; done
+
+Remove white spaces:
+
+#cat decom_vv | sed 's/ //g'  | sort -rh
+
+Check ping status
+
+#for x in $(cat /tmp/decom_vv); do echo "....$x....";ping -c 2 $x; done
+
+#for x in $(cat /tmp/cache_vv); do echo "....$x....";nslookup $x; done
+#for i in `cat /tmp/decom_vv`; do echo "$i: "; ssh -q -oBatchMode=yes -oStrictHostKeyChecking=no -oConnectTimeout=1 -oConnectionAttempts=1 $i "uptime"; echo; done
+#for i in `cat /tmp/decom_vv`; do echo "$i: "; ssh -q -oBatchMode=yes -oStrictHostKeyChecking=no -oConnectTimeout=1 -oConnectionAttempts=1 $i "init 0"; echo; done
+
+Verify Activity on Linux Servers prior to Decommission
+
+# ps -ef | egrep -i "oracle|python|httpd|java|perl|db2|mysql|dns" | egrep -v 'grep|root'
+#lastlog -t 5
+#netstat -anlp | grep -i listen
+
+ ps -ef | egrep -i 'oracle|python|httpd|java|perl|db2|mysql|dns' | grep -v grep
+
+#for i in `cat /tmp/decom_vv`; do echo "$i: "; ssh -q -oBatchMode=yes -oStrictHostKeyChecking=no -oConnectTimeout=1 -oConnectionAttempts=1 $i "ps -ef | egrep -i 'oracle|python|httpd|java|perl|db2|mysql|dns' | egrep -v 'grep|root' "; echo; done
+
+#for i in `cat /tmp/app_vv`; do echo "$i: "; ssh -q -oBatchMode=yes -oStrictHostKeyChecking=no -oConnectTimeout=1 -oConnectionAttempts=1 $i "lastlog -t 5"; echo; done
+
+
+#for i in `cat /tmp/app_vv`; do echo "$i: "; ssh -q -oBatchMode=yes -oStrictHostKeyChecking=no -oConnectTimeout=1 -oConnectionAttempts=1 $i "netstat -anlp | grep -i listen"; echo; done
+
+
+#for i in `cat /tmp/sudo_vv`; do echo "$i: "; ssh -q -oBatchMode=yes -oStrictHostKeyChecking=no -oConnectTimeout=1 -oConnectionAttempts=1 $i "puppet agent -tov"; echo; done
+
+#for i in `cat /tmp/sudo_vv`; do echo "$i: "; ssh -q -oBatchMode=yes -oStrictHostKeyChecking=no -oConnectTimeout=1 -oConnectionAttempts=1 $i "sudo -U BH23081 -l"; echo; done
+
+#for i in `cat /tmp/ad_vv`; do echo "$i: "; ssh -q -oBatchMode=yes -oStrictHostKeyChecking=no -oConnectTimeout=1 -oConnectionAttempts=1 $i "cat /etc/sssd/sssd.conf | grep -i MST-IFS-AUTOMATION"; echo; done
+
+#for i in `cat /tmp/list_vv`; do echo "$i: "; ssh -q -oBatchMode=yes -oStrictHostKeyChecking=no -oConnectTimeout=1 -oConnectionAttempts=1 $i "cat /etc/os-release | grep -i version"; echo; done
+
+#for i in `cat /tmp/list_vv`; do echo "$i: "; ssh -q -oBatchMode=yes -oStrictHostKeyChecking=no -oConnectTimeout=1 -oConnectionAttempts=1 $i "yum update -y --skip-broken --nogpg --exclude=ruby-default-gems*,perl*,git*"; echo; done
+
+
+#for i in `cat /tmp/sudo_vv`; do echo "$i: "; ssh -q -oBatchMode=yes -oStrictHostKeyChecking=no -oConnectTimeout=1 -oConnectionAttempts=1 $i "cd /etc/sudoers.d; touch mdc_stella_app_ag; echo "%mdc_stella_app_ag mdc1vr1172, mdc1vr1173, mdc1vr1174, mdc1vr1175, mdc1vr1176, mdc1vr1177, mdc1vr1178, mdc1vr1179, mdc1vr1180, mdc1vr1181, mdc1vr1182, mdc1vr1183, mdc1vr1184 = (root) NOPASSWD:/usr/bin/su - root, (root) NOPASSWD:/bin/su - root ##2022-11-23" > mdc_stella_app_ag; echo "%mdc_stella_app_ag mdc1vr1172, mdc1vr1173, mdc1vr1174, mdc1vr1175, mdc1vr1176, mdc1vr1177, mdc1vr1178, mdc1vr1179, mdc1vr1180, mdc1vr1181, mdc1vr1182, mdc1vr1183, mdc1vr1184 = (root) NOPASSWD:/usr/bin/su - fsgapp, (root) NOPASSWD:/bin/su - fsgapp" >> mdc_stella_app_ag; cat mdc_stella_app_ag"; echo; done
+
+
+#for i in `cat /tmp/sudo_konda`; do echo "$i: "; ssh -q -oBatchMode=yes -oStrictHostKeyChecking=no -oConnectTimeout=1 -oConnectionAttempts=1 $i "cd /etc/sudoers.d;  touch mdc_stella_supp_ag; echo '%mdc_stella_supp_ag  ALL = (root) NOPASSWD:/usr/bin/su - root, (root) NOPASSWD:/bin/su - root ##2022-12-13' >> mdc_stella_supp_ag; cat mdc_stella_supp_ag; sudo -U bh20992 -l"; echo; done
+
+
+for x in $(cat /tmp/abc_vv); do echo "....$x...."; df -h | awk ' {s+=$2} END {print s} '; done
+
+#for i in `cat /tmp/abc_vv`; do echo "$i: "; ssh -q -oBatchMode=yes -oStrictHostKeyChecking=no -oConnectTimeout=1 -oConnectionAttempts=1 $i "df -h | awk ' {s+=$2} END {print s} ' "; echo; done
+=====================================================================================
+
+Inventory Updates:
+Decom Status turn into "P"
+
+Server1:#/usr/local/bin/inventory-mark-pending-decom <server_name>
+Server1: #for x in $(cat /tmp/decom_vv); do /usr/local/bin/inventory-mark-pending-decom  $x; done
+
+
+Decom Status turn into "Y"
+#/usr/local/bin/inventory-mark-decommissione  <server_name>
+#for x in $(cat /tmp/decom_vv); do /usr/local/bin/inventory-mark-decommissioned $x; done
+
+
+
+Decom status turn from "Y" to "N"
+[root@Server1 ~]# /usr/local/bin/move-server-back-from-decom-to-active esu4v023
+[root@Server1 ~]#
+
+
+
+
+[root@Server1 ~]# visudo -c -f  /home/qpmsync/qpmsync/policy_sudo/sudoers 2>&1 | grep -v -E 'visudo: Warning: User_Alias .B0_CMDB. referenced but not defined|visudo: Warning: unused Host_Alias CMDB_CMND|/home/qpmsync/qpmsync/policy_sudo/sudoers: parsed OK';echo
+[root@Server1 ~]#
+===========================================================================================
+for x in $(cat list); do echo "== $x"; ssh $x "uptime; echo; echo '[ Disk allocated ]';echo;lsblk | grep disk; echo;echo -n '[ CPU Cores ] '; nproc; echo ; echo '[ Ram Allocation ]'; echo ;  free -h ; echo;echo '[ Process running apart from root user ]';echo;ps -ef | grep -v root;echo";done
+== ma304dlpspl843
+13:05:03 up  1:28,  0 users,  load average: 0.00, 0.07, 0.19
+ 
+[ Disk allocated ]
+ 
+sda                            8:0    0  3.5T  0 disk
+sdb                            8:16   0 21.9T  0 disk
+ 
+[ CPU Cores ] 48
+ 
+[ Ram Allocation ]
+ 
+              total        used        free      shared  buff/cache   available
+Mem:           251G        3.0G        247G         10M        751M        247G
+Swap:          4.0G          0B        4.0G
+ 
+[ Process running apart from root user ]
+ 
+UID        PID  PPID  C STIME TTY          TIME CMD
+dbus      1539     1  0 11:37 ?        00:00:00 /usr/bin/dbus-daemon --system --address=systemd: --nofork --nopidfile --systemd-activation
+chrony    1546     1  0 11:37 ?        00:00:00 /usr/sbin/chronyd
+polkitd   1563     1  0 11:37 ?        00:00:00 /usr/lib/polkit-1/polkitd --no-debug
+postfix   2650  2610  0 11:37 ?        00:00:00 pickup -l -t unix -u
+postfix   2651  2610  0 11:37 ?        00:00:00 qmgr -l -t unix -u
+nagios    2850     1  0 11:37 ?        00:00:00 /usr/local/ncpa/ncpa_listener --start
+ 
+=========================================
+
+Color codes in Nix inventory, those colors tells you the status of the server. If a hostname is green, that means the server is up and running and our inventory update process was able to login to the server. Red means the server is responding but the inventory process isn't able to login to it. If it is gray, that either means the server is decommissioned, or that the server was newly added and the inventory update process hasn't looked at it yet.
+
+
+=======================================================================================================
+Notes: No PCI servers in 3rd week
+
+[root@lp000xslnx0008 lists]# pwd
+/etc/ansible/inventories/patching/lists
+
+Rolling Fashion:
+[root@lp000xslnx0008 tmp]# #ansible-playbook -i /tmp/kafka_vv /etc/ansible/playbooks/mst_reboot/rolling.reboot2.yml
+
+# ansible-playbook -i /tmp/Kafka_konda  /etc/ansible/playbooks/mst_reboot/rolling.reboot2.yml
+
+To boot multiple servers at time
+#for i in `cat /tmp/failed_vv`; do echo "$i: "; ssh -q -oBatchMode=yes -oStrictHostKeyChecking=no -oConnectTimeout=1 -oConnectionAttempts=1 $i "init 6"; echo; done
+
+#for i in `cat /tmp/failed_vv`; do echo "$i: "; ssh -q -oBatchMode=yes -oStrictHostKeyChecking=no -oConnectTimeout=1 -oConnectionAttempts=1 $i "uptime ; uname -r"; echo; done
+==================================================================
+MCOM BCOM patching - you can get servers list from mail
+[root@lp000xslnx0008 app]# pwd
+/etc/ansible/inventories/patching/march22/vv
+
+Prework  
+#ansible-playbook -i /tmp/wms_vv /etc/ansible/playbooks/mst_patching_prework/patchingprework.yml --forks 50 
+
+Yum update  
+#ansible-playbook -i /tmp/wms_vv /etc/ansible/playbooks/mst_yum_update/yum_update.yml --forks 50
+
+
+1.  /etc/ansible/playbooks/mst_yum_update/yum_update.yml
+
+=================================================================
+Patching status verify
+
+PCI list:
+tailf /opt/mst/mst_linux_scripts/mst_complete_patch/complete_patch_result_pci.txt
+
+Non PCI list:
+tailf /opt/mst/mst_linux_scripts/mst_complete_patch/complete_patch_result.txt
+==========================================================================================
+New Updates!!
+Please use our old yum update playbook in patching for Non-PCI server’s - /etc/ansible/playbooks/mst_yum_update/yum_update.yml
+Start using the new playbook created by Kishan for PCI Server’s - /etc/ansible/playbooks/mst_yum_update/yum_update_SSP.yml
+
+=================================================================
+Direct root ssh is not enabled then use below scripts - b0_unixops :
+
+Prework:
+#ansible-playbook -u b0_unixops -k --become -i /tmp/wdc_vv /etc/ansible/playbooks/mst_patching_prework/patchingprework.yml --forks 50
+Yum update:
+#ansible-playbook -u b0_unixops -k --become -i /tmp/wdc_vv /etc/ansible/playbooks/mst_yum_update/yum_update.yml --forks 50
+
+==================================================================================
+--Run the following Playbook for Non-PCI:
+
+ansible-playbook -i all /etc/ansible/playbooks/mst_patching_prework/patchingprework.yml --forks 50
+----------------
+--Run the following Playbook for PCI and use the b0_unixops password (when prompted) located in CyberArk:
+
+ansible-playbook -u b0_unixops -k --become -i <path to PCI inventory file> /etc/ansible/playbooks/mst_patching_prework/patchingprework.yml --forks 50
+----------------
+
+yum update
+
+--Run the following Playbook against your inventory files (Non-PCI and PCI) that you created in the previous step:
+
+ansible-playbook -i kaf1 /etc/ansible/playbooks/mst_yum_update/yum_update.yml --forks 50
+ansible-playbook -u b0_unixops -k --become -i set1 /etc/ansible/playbooks/mst_yum_update/yum_update.yml --forks 50
+ansible-playbook -u b0_unixops -k --become -i all2 /etc/ansible/playbooks/mst_yum_update/yum_update.yml --forks 50
+-----------------------
+
+Reboot
+
+To reboot the severs run the following Playbook. It will reboot all of the hosts with a short period between each host.
+
+ansible-playbook -i <your inventory file here> /etc/ansible/playbooks/mst_reboot/reboot_sleep.yml --forks 50
+
+For Rolling reboot
+ansible-playbook -i kaf1 /etc/ansible/playbooks/mst_reboot/rolling.reboot2.yml
+
+---------------------
+
+Uptime
+
+For Non-PCi
+
+ansible-playbook -u bh19192p  -k --become -i /tmp/fri_vv /etc/ansible/playbooks/mst_uptime/uptime.yml --forks 50
+
+For PCI
+
+PCI:
+ 
+Prework:
+ansible-playbook -u bh19192p  -k --become -i /tmp/thurs_vv /etc/ansible/playbooks/mst_patching_prework/patchingprework.yml --forks 50
+
+Yum update :
+ansible-playbook -u bh19192p  -k --become -i /tmp/fri_vv /etc/ansible/playbooks/mst_yum_update/yum_update.yml --forks 50
+
+Boot:
+ansible-playbook -u bh19192p  -k --become -i /tmp/wdc_vv  /etc/ansible/playbooks/mst_reboot/reboot_sleep.yml --forks 50
+
+
+Uptime:
+ansible-playbook -u bh19192p  -k --become -i /tmp/fri_vv /etc/ansible/playbooks/mst_uptime/uptime.yml --forks 15
+
+
+--------------------
+
+
+
+---FOR COMPLETE PATCH LIST (NON-PCI, NON-SPECIAL NOTE SERVERS)
+tailf /opt/mst/mst_linux_scripts/mst_complete_patch/complete_patch_result.txt tailf /opt/mst/mst_linux_scripts/mst_complete_patch/complete_prework_result.txt ---FOR ALL SPECIAL NOTE SERVERS - DOES EVERYTHING BUT REBOOT
+tailf /opt/mst/mst_linux_scripts/mst_complete_patch/complete_patch_result_pci.txt ---FOR ALL PCI SERVERS MINUS SPECIAL NOTE PCI
+
+
+
+========================SSP Servers=========================
+#yum update -y --skip-broken --nogpg --exclude=mtech_controlm* --exclude=qpid-proton-c.x86_64 --exclude=nodejs* --exclude=npm* --exclude=python2* --exclude=java* --exclude=mod_ldap*
+
+#ls /boot
+#touch /fastboot
+#uptime
+#init 6
+
+Follow below steps
+
+#hkc 
+#ansible-playbook -i set1 /etc/ansible/playbooks/mst_yum_update/yum_update_SSP_new.yml   --forks 15               àdifferent one previously we had yum_update_SSP.yml
+ 
+	· no need to use -u b0_unixops –become -k à the playbook will fetch password directly from cyberark.
+	· Don’t use more than 15 in forks.
+hkc – is an alias to skip host key checking for ssh.
+
+=================================================Davis Script=============================================================
+
+
+# cd /etc/ansible/inventories/patching/offshore/report
+# ./gen_report.sh
+
+
+[ OK ] : Pidfile being created.
+
+Initial Checks completed...
+
+                Uptime Report
+
+
+        Days in the week
+ | Mon | Tue | Wed | Thurs | Fri |
+
+> Enter the Day [Mon/Tue/Wed/Thurs/Fri] : Tue
+> Enter the Time [06/22] : 22
+> Enter the Week [2/3] : 3
+> Enter P-id : bh19192p
+> Enter password 
+
+
+===========================================================================================================================
+
+While running yum update command and if you see below error then disable Nagios repo and try again yum update command...
+ 
+Error
+https://lp000xslnx0023.federated.fds/pulp/content/Macys/Production/OL7/custom/Nagios_NCPA/ncpa_rhel_7/repodata/repomd.xml: [Errno 12] Timeout on https://lp000xslnx0023.federated.fds/pulp/content/Macys/Production/OL7/custom/Nagios_NCPA/ncpa_rhel_7/repodata/repomd.xml: (28, 'Connection timed out after 30001 milliseconds')
+ 
+Disable Nagios:
+#subscription-manager repos --disable=Macys_Nagios_NCPA_ncpa_rhel_7
+==============================================================================================================
+Redhat 8 OS:
+
+	yum update -y --skip-broken --nogpg --exclude=ruby-default-gems* --exclude=perl* --exclude=git*
+
+yum update -y --skip-broken --nogpg --exclude=ruby-default-gems*,perl*,git*
+================================================================================================
+Nagios check:
+
+#ansible-playbook -i /tmp/failed.vv` /etc/ansible/playbooks/mst_nagios_patchfile/nagios.patchfile.yml --forks 50
+
+#ansible-playbook -u b0_unixops -k --become -i /tmp/failed.vv /etc/ansible/playbooks/mst_nagios_patchfile/nagios.patchfile.yml --forks 50
+======================================================================================================================
+If you find yourself needing to log in to a server and updating yum manually on that server, please ensure you remove the following indicator file before reboot located under /etc:
+#rm -rf /etc/mstospatching.ind
+
+[root@Server1 etc]# pwd
+/etc
+[root@Server1 etc]# ll | grep .ind
+-rw-r--r--   1 root root         0 Aug 15 22:18 mstospatching.ind
+ 
+If this file is not removed and the server is rebooted, the updated mstospatching.info file will not get created and Nagios will start alerting as critical. The step to remove this file has been added to all automations and also the yum_update.yml playbook on the Ansible server. 
+======================================================================================
+Add server into Satellite tools:
+
+[root@Server1 ~]# cat /etc/puppetlabs/puppet/puppet.conf |grep -E 'ca_port|server'
+ca_server       = lp000xslnx0021.federated.fds
+ca_port         = 8141
+server          = lp000xslnx0021.federated.fds
+[root@Server1 ~]# cat /etc/rhsm/rhsm.conf |grep -E -w 'hostname|baseurl'
+# Server hostname:
+hostname = lp000xslnx0020.federated.fds
+baseurl = https://lp000xslnx0020.federated.fds/pulp/content/
+[root@Server1 ~]#
+
+
+===================================================================
+Ansible playbooks:
+
+Uptime Playbook:
+
+---
+- hosts: "{{ variable_host | default('servers') }}"
+#  serial: 45
+  gather_facts: no
+
+  tasks:
+
+  - name: uptime
+    shell: uptime
+    register: uptime_out
+
+  - debug: var=uptime_out.stdout
+
+
+
+  - name: uname
+    shell: uname -r
+    register: uname_out
+
+  - debug: var=uname_out.stdout
+=============================================================
+Rolling fashion:
+
+- hosts: servers
+  gather_facts: no
+  serial: 1
+
+  tasks:
+
+
+    - name: Reboot Me
+      reboot:
+
+    - name: Wait for file to be created
+      wait_for:
+        path: /tmp/kafkaClusterCheck.txt
+        timeout: 600
+
+    - pause: minutes=5
+
+=====================================================
+
+Yum update:
+
+---
+- hosts: servers
+  gather_facts: no
+  tasks:
+    - name: Remove MSTOSPATCHING Indicator File
+      shell: rm -f /etc/mstospatching.ind
+
+    - name: Yum Update
+      yum:
+        name: '*'
+        state: latest
+        exclude:
+       #   - ruby-default-gems-3.1.2-141.module+el8.7.0+15051+29b42f0c.noarch
+          - ruby-default-gems*
+          - mtech_controlm*
+          - perl*
+          - git*
+          - net-snmp*
+          - Geo*
+#    - name: install mst-dummy
+#      shell: yum install mst-dummy -y
+
+#    - name: reinstall mst-dummy
+#      shell: yum reinstall mst-dummy -y
+
+===============================================
+
+Reboot:
+
+---
+- hosts: servers
+  gather_facts: no
+
+  tasks:
+   - name: Reboot Servers
+     reboot:
+         reboot_timeout: 1
+#     environment:
+#        PATH: "/usr/sbin/"
+#        test_command: uptime
+
+
+==================================================
+Prework:
+
+cat: /tmp/wdc_vv: No such file or directory
+---
+- hosts: servers
+  gather_facts: False
+  tasks:
+  - name: Create fastboot file
+    file:
+      path: /fastboot
+      state: touch
+      mode: u=rw,g=r,o=r
+
+  - name: Find local repos and disable
+    shell: cd /etc/yum.repos.d/; for repo in $(ls | grep "\.repo$" | egrep -v -E "redhat.repo$|satellite.repo$"); do mv $repo $repo.disabled; done
+
+#  - name: Install yum-utils if Not Installed Already
+#    shell: yum -y install yum-utils
+#    args:
+#      warn: False
+
+#  - name: Removes old kernel, installs new
+#    shell: package-cleanup --oldkernels --count=2 -y
+
+  - name: test for available disk space
+    shell: df -Pm /boot | awk '{ print $4}'| tail -n1
+    register: disk_free_2
+
+  - fail:
+       msg: "Manual Intervention Required: Please create at least 60MB free space in /boot."
+    when: disk_free_2.stdout|int<70
+
+  - name: Remove old yum files and clear yum cache
+    shell: yum clean all; rm -rf /var/cache/yum/*
+    args:
+      warn: False
+
+  - name: Removes Puppet files older than 45 days
+    shell: find /var/lib/puppet/clientbucket -type f -mtime +45 -delete
+    ignore_errors: yes
+
+  - name: Kill Redhat Certs Older Than 24 Hours
+    shell: if [ -f /var/run/rhsm/cert.pid ]; then /bin/kill -9 `cat /var/run/rhsm/cert.pid  2> /dev/null` 2> /dev/null; fi
+
+  - name: Remove files older than 3 day from /var/spool/abrt/
+    shell: find /var/spool/abrt/ -mtime +3 -delete
+    ignore_errors: yes
+
+  - name: test for available disk space on /var
+    shell: df -Pm /var | awk '{ print $4}'| tail -n1
+    register: disk_free_var
+
+  - name: Generate Yum Repolist
+    shell: yum repolist
+    args:
+      warn: False
+
+  - name: Check for Berkeley DB Issues
+    yum:
+      list: updates
+    register: yumoutput
+    ignore_errors: yes
+
+  - name: Fix Berkeley DB Library (FAILS here aren't bad, just means threre is no Berkeley issue)
+    shell: "{{item}}"
+    ignore_errors: yes
+    with_items:
+      - mkdir -p /var/lib/rpm/backup
+      - cp -a -f /var/lib/rpm/__db* /var/lib/rpm/backup/
+      - rm -f /var/lib/rpm/__db.[0-9][0-9]*
+      - rpm --quiet -qa
+      - rpm --rebuilddb
+      - yum clean all
+      - rm -rf /var/lib/rpm/backup/*
+    when: "'Berkeley DB' in yumoutput.msg"
+    args:
+      warn: false
+
+  - name: Generate Yum Repolist
+    shell: yum repolist
+    args:
+      warn: false
+
+  - name: test for available disk space on /var
+    shell: df -Pm /var | awk '{ print $4}'| tail -n1
+    register: disk_free_var2
+
+  - fail:
+       msg: "Manual Intervention Required: Please free more space on /var for yum updates."
+    when: disk_free_var2.stdout|int<800
+
+#  - name: disable the Macys Google Cloud Package Repo
+#    shell: yum-config-manager --disable Macys_Google_Cloud_Packages_Google_Cloud_Packages
+
+
+
+==========================================
+During the freeze if you are editing/deleting any files under os filesystem, please take backup. 
+Please update your VM horizon and pulse secure to latest version from Infosys software center.
+Make sure everyone keeping macys standard signature with your primary number and our on call number.
+Work on the Incidents which are alerting in EDB dashboard as a high priority and close them asap.
+Please verify your incidents & SC Task & Activities  shift hand over before sending.
+Make sure Jabber application enabled and login state during your shift and keep a note of our Linux/Solaris on call numbers.
+please acknowledge to clients mails and respond to Teams chats immediately without delay, join the SOC Bridge calls immediately.
+Please send consolidate mail to Bill/Tejas by sharp at 7AM EST & Midrange status mail by 7:30AM EST-- make sure please update server list with INC number  
+If any P1 Ticket comes to our Linux/Solaris queue work on priority basis.
+If you see bulk servers down due to network/diaster then cced to Tejas/Bill, communicate to Linux/Unix teams and respective servers owners.
+Don't login Jumpbox, Ansible, Puppet, Sudoers, NixInventory, Satellite and Test servers unnesecerly.
+Don't practice anyhing on any servers and don't execute any commands without having a proper ticket.
+If any application related command and files deletion/modification should be done by application team only, if they really don't have access then request them to raise request and you can work on it. 
+Don't grant sudo to root user to any application user without having a exemption.
+Please reach out available resource from offshore before escalating issues to onshore team, If the engineer didn’t respond escalate to TL/Managers of respective tracks. 
+Use our communication channels Microsoft Teams/WhatsApp groups to check with available resource in the team 
+We have to grant Sudo/Ulimit/ACL/filesystem creation/extention/AD Access/StartUp Scripts/Local User creation/Package Installation only if we have proper approved requests.
+If you are troubleshooting on any issues under SOC call and you can help application team and ask for the ticket once closed the call.
+If application team reach out to us to reboot host then you can ask them to raise incident and work on it and server should be in maintenance mode while rebooting the server.
+We have postponed all decommission tasks/chnages after holidays.
+Please do follow SLAs of the tickets 
+Please use your  Linux/Solaris on-call number for  H/W related cases.
+SC_TASK notes need to update. 
+Ticket updates
+a)	Don’t change the incident severity.
+b)	In case if you find any incident that you are not sure which team it belongs then please  keep the ticket in the “PENDING” with option “Awaiting Customer” and then work with soc.
+c)	In any Disk Space issues if you feel that you have to transfer the incident to different team, then please talk to respective team and get conformation that the ticket need to take care by their team and dispatch the incident to them by updating properly. 
+d)	Please document the incidents on what technical work you are doing. If there is no technical work just executed the command please update the same in the incident. But don’t leave the incident blank and close the incident. 
+e)	Command center team will not assign tickets to one specific person, team will be distributing to all the member in the shit. 
+f)	Need to work on Automation failed tickets on high priority 
+h)	Keep updating note section on the tickets 
+
+==============================================================================================================
+LDOM prework:
+
+#!/bin/sh
+
+serv=$(uname -n)
+dir=/solarisosimages/solaris_bkp_2024
+filename=${serv}-backup-$(date +"%d%m%Y%H%M%S").txt
+file=$dir/$filename
+
+echo ####################################################################" >> $file
+echo ## This Script is for take Backup of Solaris Servers Imp OS files ##" >> $file
+echo ####################################################################" >> $file
+
+echo " " >> $file
+echo "#########################################" >> $file
+echo "## To print available zones and status ##" >> $file
+echo "#########################################" >> $file
+echo " " >> $file
+
+zoneadm list -civ >> $file
+
+echo " " >> $file
+echo "############################################" >> $file
+echo "## To print df -h output on Global server ##" >> $file
+echo "############################################" >> $file
+echo " " >> $file
+
+uname -a >> $file
+df -hP >> $file
+
+echo " " >> $file
+echo "#############################################" >> $file
+echo "## To print each zone df -h command output ##" >> $file
+echo "#############################################" >> $file
+echo " " >> $file
+
+for i in `zoneadm list|grep -v global`; do zlogin $i uname -a; sleep 3; zlogin $i df -hP; echo; done >> $file
+
+echo " " >> $file
+echo "########################################" >> $file
+echo "## To print Global zone vfstab output ##" >> $file
+echo "########################################" >> $file
+echo " " >> $file
+
+uname -a >> $file
+cat /etc/vfstab >> $file
+
+echo " " >> $file
+echo "######################################" >> $file
+echo "## To print each zone vfstab output ##" >> $file
+echo "######################################" >> $file
+echo " " >> $file
+
+cat /etc/vfstab > /etc/vfstab-bkp-$(date +"%d%m%Y%H%M%S").txt
+for i in `zoneadm list|grep -v global`; do zlogin $i uname -a; sleep 3; zlogin $i cat /etc/vfstab; echo; done >> $file
+
+echo " " >> $file
+echo "#################################################" >> $file
+echo "## To print mail config details of Global zone ##" >> $file
+echo "#################################################" >> $file
+echo " " >> $file
+
+uname -a >> $file
+cat /etc/mail/main.cf | grep ^DS >> $file
+
+echo " " >> $file
+echo "############################################" >> $file
+echo "## To print each zone mail config details ##" >> $file
+echo "############################################" >> $file
+echo " " >> $file
+
+for i in `zoneadm list|grep -v global`; do zlogin $i uname -a; sleep 3; echo; cat /etc/mail/main.cf | grep ^DS; echo; done >> $file
+
+echo " " >> $file
+echo "###########################################################" >> $file
+echo "## To print Global zone offline svcs -xv services status ##" >> $file
+echo "###########################################################" >> $file
+echo " " >> $file
+
+uname -a >> $file
+svcs -xv >> $file
+
+
+echo " " >> $file
+echo "################################################" >> $file
+echo "## To print each zone offline services status ##" >> $file
+echo "################################################" >> $file
+echo " " >> $file
+
+for i in `zoneadm list|grep -v global`; do zlogin $i uname -a; sleep 3; zlogin $i svcs -xv; echo; done >> $file
+
+echo " " >> $file
+echo "##################################################" >> $file
+echo "## To print global zone Boot Environment status ##" >> $file
+echo "##################################################" >> $file
+echo " " >> $file
+
+uname -a >> $file
+beadm list >> $file
+
+echo " " >> $file
+echo "################################################" >> $file
+echo "## To print each zone Boot Environment status ##" >> $file
+echo "################################################" >> $file
+echo " " >> $file
+
+for i in `zoneadm list|grep -v global`; do zlogin $i uname -a; sleep 3; zlogin $i beadm list; echo; done >> $file
+
+echo " " >> $file
+echo "##########################################" >> $file
+echo "## To print vasd service in Global zone ##" >> $file
+echo "##########################################" >> $file
+echo " " >> $file
+
+uname -a >> $file
+/etc/init.d/vasd status >> $file
+
+echo " " >> $file
+echo "############################################" >> $file
+echo "## To print each zone vasd service status ##" >> $file
+echo "############################################" >> $file
+echo " " >> $file
+
+for i in `zoneadm list|grep -v global`; do zlogin $i uname -a; sleep 3; echo; /etc/init.d/vasd status; echo; done >> $file
+
+echo " " >> $file
+echo "##############################################" >> $file
+echo "## To print each zone confugurations status ##" >> $file
+echo "##############################################" >> $file
+echo " " >> $file
+
+for i in `zoneadm list|grep -v global`; do zlogin $i uname -a; zonecfg -z $i info; sleep 3; echo; done >> $file
+
+echo " " >> $file
+echo "###############################################" >> $file
+echo "## To take backup of zones config json files ##" >> $file
+echo "###############################################" >> $file
+echo " " >> $file
+
+cp -rp /var/share/zones/index.json /var/share/zones/index.json.bkp-$(date +"%d%m%Y%H%M%S").txt
+cat /var/share/zones/index.json >> $file
+
+echo " " >> $file
+echo "###################################################" >> $file
+echo "## To print Global zone existing  AD groups list ##" >> $file
+echo "###################################################" >> $file
+echo " " >> $file
+
+uname -a >> $file
+cp /etc/opt/quest/vas/users.allow /etc/opt/quest/vas/users.allow.bkp-$(date +"%d%m%Y%H%M%S").txt
+cat /etc/opt/quest/vas/users.allow >> $file
+
+echo " " >> $file
+echo "################################################" >> $file
+echo "## To print each zone existing AD groups list ##" >> $file
+echo "################################################" >> $file
+echo " " >> $file
+
+for i in `zoneadm list|grep -v global`; do zlogin $i uname -a; sleep 3; zlogin $i cat /etc/opt/quest/vas/users.allow; echo; done >> $file
+
+echo " " >> $file
+echo "#########################################" >> $file
+echo "## To print each zone .xml file output ##" >> $file
+echo "#########################################" >> $file
+echo " " >> $file
+
+for i in `zoneadm list|grep -v global`; do zlogin $i uname -a; sleep 3; cat /etc/zones/$i.xml; echo; done >> $file
+
+echo " " >> $file
+echo "##################################################" >> $file
+echo "## To print Global zone running services status ##" >> $file
+echo "##################################################" >> $file
+echo " " >> $file
+
+uname -a >> $file
+svcs -a >> $file
+
+echo " " >> $file
+echo "################################################" >> $file
+echo "## To print each zone running services status ##" >> $file
+echo "################################################" >> $file
+echo " " >> $file
+
+for i in `zoneadm list|grep -v global`; do zlogin $i uname -a; sleep 3; zlogin $i svcs -a; echo; done >> $file
+
+echo " " >> $file
+echo "######################################################" >> $file
+echo "## To print Global zone publisher & pkg info status ##" >> $file
+echo "######################################################" >> $file
+echo " " >> $file
+
+uname -a >> $file
+pkg publisher solaris >> $file
+echo " " >> $file
+pkg info entire >> $file
+
+echo " " >> $file
+echo "####################################################" >> $file
+echo "## To print each zone publisher & pkg info status ##" >> $file
+echo "####################################################" >> $file
+echo " " >> $file
+
+for i in `zoneadm list|grep -v global`; do zlogin $i uname -a; sleep 3; zlogin $i pkg publisher solaris; echo; zlogin $i pkg info entire; echo; done >> $file
+
+
+echo " " >> $file
+echo "##########################################" >> $file
+echo "## To print each zone LUNs/Device count ##" >> $file
+echo "##########################################" >> $file
+echo " " >> $file
+
+for i in `zoneadm list|grep -v global`; do zlogin $i uname -a; sleep 3; echo; zlogin $i ls -l /dev/rdsk | wc -l; echo; done >> $file
+
+echo " " >> $file
+echo "#######################################################" >> $file
+echo "## To print each zone Device ownership & Permissions ##" >> $file
+echo "#######################################################" >> $file
+echo " " >> $file
+
+for i in `zoneadm list|grep -v global`; do zlogin $i uname -a; sleep 3; echo; zlogin $i ls -l /dev/rdsk; echo; done >> $file
+
+===================================================================================================================
+Upgrade RHEL 7 to 8 by using Leapp:
+
+1) Download Leapp utility metadat:
+not sure if this is necessary, the https://access.redhat.com/articles/3664871 mentioned it's for disconnected upgrades (including Satellite), but our servers typically registered into satellite, not disconnected. Anyway, I downloaded leapp-data-19.tar.gz from this page, and followed the instructions there. 
+
+2)leapp upgrade fails with The value of "rhui" field must be one of ", aws, azure"
+solution: https://access.redhat.com/solutions/6984735
+# Update leapp-upgrade-el7toel8 to version 0.17.0-1.el7_9 or newer.
+yum clean all
+yum update leapp\*
+
+3)Leapp upgrade fail with error "Inhibitor: Detected loaded kernel drivers which have been removed in RHEL 8. Upgrade cannot proceed."
+solution: https://access.redhat.com/solutions/5436131
+# Backup the initramfs being currently used for booting
+cp /boot/initramfs-$(uname -r).img /boot/initramfs-$(uname -r).img.backup
+ 
+# Build a generic initramfs containing all drivers
+dracut -N -f
+ 
+# Stop the system
+shutdown
+ 
+# - On the VMWare Hypervisor side, change the SCSI Controller type Change to "VMware Paravirtual". A warning is displayed.
+# - Click on "Change Type".
+# - Boot the system and once booted run following,
+ 
+dracut -f --regenerate-all
+
+4)Leapp preupgrade getting "Inhibitor: Detected loaded kernel drivers which have been removed in RHEL 8. Upgrade cannot proceed."
+solution: https://access.redhat.com/solutions/6971716
+#rmmod pata_acpi
+
+5) Unable to use yum successfully
+solution: https://access.redhat.com/solutions/5817291
+- created a content view 'RHEL7to8' with activation key 'RHEL7to8', with 4 RHEL7 servers repositories, and 3 RHEL8 servers repositories.
+- register lindev31 to above content view.
+
+6)most likely you still need to answer some choices. check file /var/log/leapp/leapp-report.txt , if no objection, then do as it suggested. Here is my example
+#head -50 /var/log/leapp/leapp-report.txt
+#leapp answer --section authselect_check.confirm=True
+#leapp answer --section remove_pam_pkcs11_module_check.confirm=True
+ 
+# then run upgrade again
+leapp upgrade
+
+7) Reboot
+After 'leapp upgrade' succeeded, it will prompt you to reboot. do it as required. The reboot will take a while since it will actually install new RHEL8 package. 
+
+8) Basic Checks:
+
+# kernel is at RHEL 8 level
+[root@lindev31 ~]# uname -a
+Linux lindev31.federated.fds 4.18.0-372.32.1.el8_6.x86_64 #1 SMP Fri Oct 7 12:35:10 EDT 2022 x86_64 x86_64 x86_64 GNU/Linux
+[root@lindev31 ~]# rpm -qf /etc/redhat-release
+redhat-release-8.6-0.1.el8.x86_64
+ 
+# AD still mapping
+[root@lindev31 ~]# getent passwd b0_unixops
+b0_unixops:*:713544138:1007000513:b0_unixops:/home/b0_unixops:/bin/bash
+[root@lindev31 ~]#
+ 
+# re-set RSA
+# remove migrated server from RSA console, https://nix-automation/RSA.php (or directly in https://mt000xsrsa90.federated.fds/ )
+# add migrated server into RSA console again, https://nix-automation/RSA.php(or directly in https://mt000xsrsa90.federated.fds/ )
+# clear the cache
+rm -f /var/ace/failover.dat /var/ace/sdstatus.1 /var/ace/securid
+# test
+/opt/pam/bin/64bit/acetest
+
+9) yum: How can I view variables like $releasever, $basearch, $arch etc.? and How can I change it?
+
+# RHEL8 view:
+[root@lindev77 ~]# /usr/libexec/platform-python -c 'import dnf, json; db = dnf.dnf.Base(); print(json.dumps(db.conf.substitutions, indent=2))'
+{
+  "arch": "x86_64",
+  "basearch": "x86_64",
+  "releasever": "8"
+}
+ 
+# change, the above command will still show "releasever" as "8", but yum will honor it as "8.6" because of /etc/yum/vars/releasever
+[root@lindev77 ~]# echo '8.6' > /etc/yum/vars/releasever
+
+===========================================================================================
+Configure Multipath:
+
+1) Install packages, and configure multipath
+
+yum -y install device-mapper-multipath
+vi /etc/multipath.conf
+# see content of /etc/multipath.conf below
+modprobe dm-multipath
+systemctl restart multipathd
+multipath -ll
+
+2) vi /etc/multipath.conf
+defaults {
+           polling_interval 10
+           find_multipaths yes
+         }
+devices {
+          device {
+                   vendor                 "3PARdata"
+                   product                "VV"
+                   path_grouping_policy   group_by_prio
+                   path_selector          "round-robin 0"
+                   path_checker           tur
+                   features               "0"
+                   hardware_handler       "1 alua"
+                   prio                   alua
+                   failback               immediate
+                   rr_weight              uniform
+                   no_path_retry          18
+                   rr_min_io_rq           1
+                   detect_prio            yes
+                   fast_io_fail_tmo       10
+                   dev_loss_tmo           14
+                 }
+}
+
+3) re-scan recently presented SAN LUNs without rebooting
+for x in $(ls /sys/class/fc_host/); do echo $x; done
+for x in $(ls /sys/class/fc_host/); do echo "1" >  /sys/class/fc_host/$x/issue_lip; done
+for x in $(ls /sys/class/fc_host/); do echo  "- - -" > /sys/class/scsi_host/$x/scan; done
+multipath -ll
+
+
+=================================================================
+How to download Solaris patch   certificate and keys
+
+1. Go  to below link to get details of certs and keys and procedure to install certs.https://docs.oracle.com/cd/E53394_01/html/E54747/installkeycert.html
+2. Go  to below link to route certs to download and you can click on    certificate tab.https://pkg-register.oracle.com/
+3. Download the certs and keys   in local desktop and move these two files into physical serverunder “/var/tmp/KEYS” folder.
+4.  Configure the solaris publisher using the new  certificate and key   files.
+#pkg set-publisher -k /var/tmp/KEYS/pkg.oracle.com.key.pem -c /var/tmp/KEYS/pkg.oracle.com.certificate.pem -G "*" -g https://pkg.oracle.com/solaris/support/ solaris
+5. Use   the following command to show that the  certificate and key are installed:#pkg publisher solaris6. If  you  get any certificate issue in zones while performing patching, then follow same procedure as given below.• Copy   new certs in /var/tmp/KEYS folder in zone• Unset the publisher in zone• Set the publisher in zone
+6. If  you  get any certificate issue in zones while performing patching, then follow same procedure as given below.• Copy   new certs in /var/tmp/KEYS folder in zone• Unset the publisher in zone• Set the publisher in zone
+==========================================================================
+
+
