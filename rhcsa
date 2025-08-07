@@ -1,0 +1,580 @@
+#rhcsa topic
+nmcli connection show
+nmcli connection modify "wired connection 1" ipv4.address "2454" ipv4.dns "124" ipv4.gateway "124" ipv4.method manual
+nmcli connection reload
+hostnamectl set-hostname node1111.example.com
+
+-------------------------------
+
+vim /etc/ssh/sshd_config
+vim /etc/yum.repos.d/rhel.repo
+
+-----------------------------------
+
+systemctl status httpd.service
+systemctl enable httpd.service
+vim /etc/httpd/conf/httpd.conf
+Listen 82
+semanage port -l | grep "http"
+
+semanage port -a -t httpd_port_t -p tcp 82
+semanage port -l | grep "http"
+
+firewall-cmd --permanent --add-port=82/tcp
+firewall-cmd--reload
+firewall-cmd --list-all
+systemctl restart httpd
+----------------------
+
+
+
+systemctl status httpd.service
+systemctl enable httpd.service
+vim /etc/httpd/conf/httpd.conf
+listen 82
+semanage port -l | grep "http"
+semanage port -a -t httpd_port_t -p tcp 82
+semanage port -l |grep "http"
+firewall-cmd --permanent --add-port=82/tcp
+firewall-cmd --reload
+firewall-cmd --list-all
+systemctl restart httpd
+
+------------------------------------------------
+
+systemctl status httpd.service
+systemctl enable httpd.service
+vim /etc/httpd/conf/httpd.conf
+listen82
+semanage port -l | grep "http"
+semanage port -a -t httpd_port_t -p tcp 82
+semanage port -l | grep "http"
+firewall-cmd --permanent --add-port=82/tcp
+firewall-cmd --reload
+firewall-cmd --list-all
+systemctl restart httpd
+----------------------------------------------
+
+systemctl status httpd.service
+systemctl enable httpd.service
+vim /etc/httpd/conf/httpd.config
+listen 82
+semanage port -l | grep "http"
+semanage port -a -t httpd_port_t -p tcp 82
+semanage port -l | grep "http"
+firewall-cmd --permanent--add-port=82/tcp
+firewall-cmd --reload
+firewall-cmd --list-all
+systemctl restart httpd
+--------------------------------
+
+
+
+groupadd sysadmin
+useradd -G sysadmin natasha
+useradd -G sysadmin harry
+--------------------------------------------------------------------------------
+
+nmcli connection show
+nmcli connection modify "wiredconnection1" ipv4.address "124124" ipv4.dns "124512" ipv4.gateway "124521" ipv4.method manual
+nmcli connection reload
+hostnamectl set-hostname jdhfjhdjd.com
+
+vi /etc/ssh/sshd_config
+permetrootlogin yes
+password authentication yes
+:wq!
+systemctl restart sshd
+
+vim /etc/yum.repos.d/rhel.repo
+[Baseos]
+name=baseos
+baseurl=djjaksdkj.com
+gpgcheck=0
+enabled=1
+[appstream]
+name=appstream
+baseurl=dkjajdjhf.com
+gpgcheck=0
+enabled=1
+yum repolist all
+
+systemctl status httpd.service
+systemctl enable httpd.service
+vim /etc/httpd/conf/httpd.conf
+Listen 82
+semanage port -l | grep "http"
+semanage port -a -t http_port_t -p tcp 82
+semanage port -l | grep "http"
+firewall-cmd--permanent--add-port=82/tcp
+firewall-cmd--reload
+firewall-cmd--list-all
+systemctl restart httpd
+
+---------------------------------------------------------------------------------------------------------
+
+groupadd sysadmin
+useradd -G sysadmin natasha
+useradd -G sysadmin harry
+useradd -s /sbin/nologin sarah
+echo "trootent" | passwd --stdin harry
+echo "ttooten" | passwd --stdin natasha
+echo "trootent" | passwd --stdin sarah
+------------------------------------
+
+yum install autofs -y
+systemctl enable autofs.service
+systemctl start autofs.service
+vim /etc/auto.master
+/rhome/etc/auto.misc
+:wq!
+vim /etc/auto.misc
+user5 -rw,soft,sync 
+:wq!
+systemctl restart autofs.service
+-------------------------------
+
+
+id athena
+ssh athena@localhost
+podman login register.com
+
+
+wget
+podman build -t monitor -f.
+podman images
+---------------------------------
+
+mkdir /opt/files
+chown -R athena:athena /opt/files
+mkdir /opt/processed
+chown -R athena:athena /opt/processed
+ssh athena@localhost
+podman run -d --name ascii2pdf -v /opt/files:/opt/incoming:Z -v /opt/processed:/opt/outgoing:Z localhost/monitor
+podman ps
+mkdir /home/athena/.config/systemd/user/
+cd /home/athena/.config/system/user/
+podman generate system --name ascii2pdf --files --new
+ls -l
+systemctl --user daemon-reload
+systemctl --user enable container-ascii2pdf.service
+systemctl --user start container-ascii2pdf.service
+loginctl enable-linger athena
+loginctl show-user athena 
+systemctl --user restart container-ascii2pdf.service
+podman ps
+-------------------------------------------------------------------------------------------------------------
+
+mkdir /opt/files
+chown -R athena:athean /opt/files
+mkdir /opt/processed
+chown -R athena:athena /opt/processed
+ssh athena@localhost
+podman run -d --name ascii2pdf -v /opt/files:/opt/incoming:Z -v /opt/processed:/opt/outgoing:Z localhost/monitor
+podman ps
+mkdir /home/athena/.config/systemd/user
+cd /home/athena/.config/system/user
+podman generate system --name ascii2pdf --files --new
+ls -l
+systemctl --user daemon-reload
+systemctl --user enable container-ascii2pdf.service
+systemctl --user start container-ascii2pdf.service
+loginctl enable-linger athena
+loginctl show-user athena
+systemctl --user restart container-ascii2pdf.service
+podman ps
+--------------------------------------------------------------------------------------------------------------------
+
+
+nmcli connection show
+nmcli connection modify "wired conention1" ipv4.address "12412/24" ipv4.dns "454144" ipv4.gateway "2214215" ipv4.method manual
+nmcli connection reload
+hostnamectl set-hostname kshdhfdhfd.com
+
+-------------------------------------
+vim /etc/ssh/sshd_config
+permitroot login yes
+password authentication yes
+:wq!
+-------------------------------------
+vim /etc/yum.repos.d/rhel.repo
+[BaseOs]
+name=baseos
+baseurl=
+gpgcheck=0
+enabled=1
+[AppStream]
+name=appstream
+baseurl=
+gpgcheck=0
+enabled=1
+:wq
+yum repolist all
+--------------------------------
+
+systemctl status httpd.service
+systemctl enable httpd.service
+vim /etc/httpd/conf/httpd.conf
+Listen 82
+semanage port-l | grep "http"
+semanage port -a -t http_port_t -p tcp 82
+semanage port -l | grep "http"
+firewall-cmd --permanent --add-port=82/tcp
+firewall-cmd --reload
+firewall-cmd --list-all
+systemctl restart httpd
+--------------------------------
+
+yum install autofs -y
+systemctl enable autofs.service
+systemctl start autofs.service
+vim /etc/auto.master
+/rhome/etc/auto.misc
+:wq!
+vim /etc/auto.misc
+rmotesuser5 -rw,soft,sync utility.ecompl.com
+:wq!
+systemctl restart autofs.service
+------------------------------
+
+
+git hub -- 1412pardha
+redhat -- 1412Yaswanthpardha@
+
+
+
+•Created and expanded NFS (Network File System) shares and mapped hosts to the shares. 
+•Managed hardware health checks, including investigating host/switch port status and generating reports. 
+•Created and managed support cases with IBM, HPE, and Oracle for troubleshooting and resolution of storage-related issues.
+
+•Installed backup agents and conducted troubleshooting on backup-related issues. 
+
+ • Performed routine health checks on storage hardware, identifying potential issues, and implementing preventive maintenance. 
+
+Managed Cohesity backup systems, troubleshooting issues related to VM backups, restoring VMs, and performing physical system 
+restores as needed.
+
+Daily Health Check of Various Accounts of our clients and reporting daily
+Backup Status.
+•Monitoring tickets from ICD.
+•Raising incidents on backup failures..
+•Backup Troubleshooting.
+
+
+
+--------------
+
+#next 
+nmcli connection show
+nmcli connection modify "wired connection 1" ipv4.address "2454" ipv4.dns "124" ipv4.gateway "124" ipv4.method manual
+nmcli connection reload
+hostnamectl set-hostname node1111.example.com
+
+-------------------------------
+
+vim /etc/ssh/sshd_config
+vim /etc/yum.repos.d/rhel.repo
+
+-----------------------------------
+
+systemctl status httpd.service
+systemctl enable httpd.service
+vim /etc/httpd/conf/httpd.conf
+Listen 82
+semanage port -l | grep "http"
+
+semanage port -a -t httpd_port_t -p tcp 82
+semanage port -l | grep "http"
+
+firewall-cmd --permanent --add-port=82/tcp
+firewall-cmd--reload
+firewall-cmd --list-all
+systemctl restart httpd
+----------------------
+
+
+
+systemctl status httpd.service
+systemctl enable httpd.service
+vim /etc/httpd/conf/httpd.conf
+listen 82
+semanage port -l | grep "http"
+semanage port -a -t httpd_port_t -p tcp 82
+semanage port -l |grep "http"
+firewall-cmd --permanent --add-port=82/tcp
+firewall-cmd --reload
+firewall-cmd --list-all
+systemctl restart httpd
+
+------------------------------------------------
+
+systemctl status httpd.service
+systemctl enable httpd.service
+vim /etc/httpd/conf/httpd.conf
+listen82
+semanage port -l | grep "http"
+semanage port -a -t httpd_port_t -p tcp 82
+semanage port -l | grep "http"
+firewall-cmd --permanent --add-port=82/tcp
+firewall-cmd --reload
+firewall-cmd --list-all
+systemctl restart httpd
+----------------------------------------------
+
+systemctl status httpd.service
+systemctl enable httpd.service
+vim /etc/httpd/conf/httpd.config
+listen 82
+semanage port -l | grep "http"
+semanage port -a -t httpd_port_t -p tcp 82
+semanage port -l | grep "http"
+firewall-cmd --permanent--add-port=82/tcp
+firewall-cmd --reload
+firewall-cmd --list-all
+systemctl restart httpd
+--------------------------------
+
+
+
+groupadd sysadmin
+useradd -G sysadmin natasha
+useradd -G sysadmin harry
+--------------------------------------------------------------------------------
+
+nmcli connection show
+nmcli connection modify "wiredconnection1" ipv4.address "124124" ipv4.dns "124512" ipv4.gateway "124521" ipv4.method manual
+nmcli connection reload
+hostnamectl set-hostname jdhfjhdjd.com
+
+vi /etc/ssh/sshd_config
+permetrootlogin yes
+password authentication yes
+:wq!
+systemctl restart sshd
+
+vim /etc/yum.repos.d/rhel.repo
+[Baseos]
+name=baseos
+baseurl=djjaksdkj.com
+gpgcheck=0
+enabled=1
+[appstream]
+name=appstream
+baseurl=dkjajdjhf.com
+gpgcheck=0
+enabled=1
+yum repolist all
+
+systemctl status httpd.service
+systemctl enable httpd.service
+vim /etc/httpd/conf/httpd.conf
+Listen 82
+semanage port -l | grep "http"
+semanage port -a -t http_port_t -p tcp 82
+semanage port -l | grep "http"
+firewall-cmd--permanent--add-port=82/tcp
+firewall-cmd--reload
+firewall-cmd--list-all
+systemctl restart httpd
+
+---------------------------------------------------------------------------------------------------------
+
+groupadd sysadmin
+useradd -G sysadmin natasha
+useradd -G sysadmin harry
+useradd -s /sbin/nologin sarah
+echo "trootent" | passwd --stdin harry
+echo "ttooten" | passwd --stdin natasha
+echo "trootent" | passwd --stdin sarah
+------------------------------------
+
+yum install autofs -y
+systemctl enable autofs.service
+systemctl start autofs.service
+vim /etc/auto.master
+/rhome/etc/auto.misc
+:wq!
+vim /etc/auto.misc
+user5 -rw,soft,sync 
+:wq!
+systemctl restart autofs.service
+-------------------------------
+
+
+id athena
+ssh athena@localhost
+podman login register.com
+
+
+wget
+podman build -t monitor -f.
+podman images
+---------------------------------
+
+mkdir /opt/files
+chown -R athena:athena /opt/files
+mkdir /opt/processed
+chown -R athena:athena /opt/processed
+ssh athena@localhost
+podman run -d --name ascii2pdf -v /opt/files:/opt/incoming:Z -v /opt/processed:/opt/outgoing:Z localhost/monitor
+podman ps
+mkdir /home/athena/.config/systemd/user/
+cd /home/athena/.config/system/user/
+podman generate system --name ascii2pdf --files --new
+ls -l
+systemctl --user daemon-reload
+systemctl --user enable container-ascii2pdf.service
+systemctl --user start container-ascii2pdf.service
+loginctl enable-linger athena
+loginctl show-user athena 
+systemctl --user restart container-ascii2pdf.service
+podman ps
+-------------------------------------------------------------------------------------------------------------
+
+mkdir /opt/files
+chown -R athena:athean /opt/files
+mkdir /opt/processed
+chown -R athena:athena /opt/processed
+ssh athena@localhost
+podman run -d --name ascii2pdf -v /opt/files:/opt/incoming:Z -v /opt/processed:/opt/outgoing:Z localhost/monitor
+podman ps
+mkdir /home/athena/.config/systemd/user
+cd /home/athena/.config/system/user
+podman generate system --name ascii2pdf --files --new
+ls -l
+systemctl --user daemon-reload
+systemctl --user enable container-ascii2pdf.service
+systemctl --user start container-ascii2pdf.service
+loginctl enable-linger athena
+loginctl show-user athena
+systemctl --user restart container-ascii2pdf.service
+podman ps
+--------------------------------------------------------------------------------------------------------------------
+
+
+nmcli connection show
+nmcli connection modify "wired conention1" ipv4.address "12412/24" ipv4.dns "454144" ipv4.gateway "2214215" ipv4.method manual
+nmcli connection reload
+hostnamectl set-hostname kshdhfdhfd.com
+
+-------------------------------------
+vim /etc/ssh/sshd_config
+permitroot login yes
+password authentication yes
+:wq!
+-------------------------------------
+vim /etc/yum.repos.d/rhel.repo
+[BaseOs]
+name=baseos
+baseurl=
+gpgcheck=0
+enabled=1
+[AppStream]
+name=appstream
+baseurl=
+gpgcheck=0
+enabled=1
+:wq
+yum repolist all
+--------------------------------
+
+systemctl status httpd.service
+systemctl enable httpd.service
+vim /etc/httpd/conf/httpd.conf
+Listen 82
+semanage port-l | grep "http"
+semanage port -a -t http_port_t -p tcp 82
+semanage port -l | grep "http"
+firewall-cmd --permanent --add-port=82/tcp
+firewall-cmd --reload
+firewall-cmd --list-all
+systemctl restart httpd
+--------------------------------
+
+yum install autofs -y
+systemctl enable autofs.service
+systemctl start autofs.service
+vim /etc/auto.master
+/rhome/etc/auto.misc
+:wq!
+vim /etc/auto.misc
+rmotesuser5 -rw,soft,sync utility.ecompl.com
+:wq!
+systemctl restart autofs.service
+------------------------------
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+--------------
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
